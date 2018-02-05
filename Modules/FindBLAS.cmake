@@ -51,6 +51,7 @@
 # * SCSL
 # * SGIMATH
 # * IBMESSL
+# * IntelMKL_2017 (using  Single Dynamic Library)
 # * Intel10_32 (intel mkl v10 32 bit)
 # * Intel10_64lp (intel mkl v10 64 bit, lp thread model, lp64 model)
 # * Intel10_64lp_seq (intel mkl v10 64 bit, sequential code, lp64 model)
@@ -156,8 +157,13 @@ endforeach()
 if(_libraries_work)
   # Test this combination of libraries.
   set(CMAKE_REQUIRED_LIBRARIES ${_flags} ${${LIBRARIES}} ${_thread})
-#  message("DEBUG: CMAKE_REQUIRED_LIBRARIES = ${CMAKE_REQUIRED_LIBRARIES}")
-  if (CMAKE_Fortran_COMPILER_LOADED)
+  #message("DEBUG: CMAKE_REQUIRED_LIBRARIES = ${CMAKE_REQUIRED_LIBRARIES}" ${_library})  
+  if (CMAKE_REQUIRED_LIBRARIES MATCHES "mkl_rt")  
+    # dumpbin reports sgemm_ to be in mkl_rt but check_function_exists doesn't find it
+    # checking for functions is being way too cautious this whole thing should be removed
+    # for now the code assumes mkl_rt is BLAS
+    set(${_prefix}${_combined_name}_WORKS BOOL:TRUE)
+  elseif (CMAKE_Fortran_COMPILER_LOADED)
     check_fortran_function_exists("${_name}" ${_prefix}${_combined_name}_WORKS)
   else()
     check_function_exists("${_name}_" ${_prefix}${_combined_name}_WORKS)
@@ -610,6 +616,10 @@ if (BLA_VENDOR MATCHES "Intel" OR BLA_VENDOR STREQUAL "All")
 
       # Find the main file (32-bit or 64-bit)
       set(BLAS_SEARCH_LIBS_WIN_MAIN "")
+      if (BLA_VENDOR STREQUAL "IntelMKL_2017" OR BLA_VENDOR STREQUAL "All")
+        list(APPEND BLAS_SEARCH_LIBS_WIN_MAIN
+          "mkl_rt")
+      endif()
       if (BLA_VENDOR STREQUAL "Intel10_32" OR BLA_VENDOR STREQUAL "All")
         list(APPEND BLAS_SEARCH_LIBS_WIN_MAIN
           "mkl_intel_c${BLAS_mkl_DLL_SUFFIX}")
@@ -637,11 +647,19 @@ if (BLA_VENDOR MATCHES "Intel" OR BLA_VENDOR STREQUAL "All")
       # Cartesian product of the above
       foreach (MAIN ${BLAS_SEARCH_LIBS_WIN_MAIN})
         foreach (THREAD ${BLAS_SEARCH_LIBS_WIN_THREAD})
-          list(APPEND BLAS_SEARCH_LIBS
-            "${MAIN} ${THREAD} mkl_core${BLAS_mkl_DLL_SUFFIX}")
+          if (MAIN STREQUAL "mkl_rt")
+            set(BLAS_SEARCH_LIBS "${MAIN}")
+          else()
+            list(APPEND BLAS_SEARCH_LIBS
+              "${MAIN} ${THREAD} mkl_core${BLAS_mkl_DLL_SUFFIX}")
+          endif()
         endforeach()
       endforeach()
-    else ()
+    else ()    
+      if (BLA_VENDOR STREQUAL "IntelMKL_2017" OR BLA_VENDOR STREQUAL "All")
+        list(APPEND BLAS_SEARCH_LIBS
+          "")
+      endif ()
       if (BLA_VENDOR STREQUAL "Intel10_32" OR BLA_VENDOR STREQUAL "All")
         list(APPEND BLAS_SEARCH_LIBS
           "mkl_intel mkl_intel_thread mkl_core guide")
