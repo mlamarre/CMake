@@ -217,6 +217,9 @@ if (BLA_VENDOR MATCHES "Intel" OR BLA_VENDOR STREQUAL "All")
       set(_LIBRARIES LAPACK_LIBRARIES)
       set(_BLAS_LIBRARIES ${BLAS_LIBRARIES})
 
+      # MKL 2017 SDL - preferred
+      list(APPEND LAPACK_SEARCH_LIBS
+        "mkl_rt")
       # old
       list(APPEND LAPACK_SEARCH_LIBS
         "mkl_lapack")
