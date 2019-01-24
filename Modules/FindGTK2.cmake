@@ -1,102 +1,103 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
 # file Copyright.txt or https://cmake.org/licensing for details.
 
-#.rst:
-# FindGTK2
-# --------
-#
-# FindGTK2.cmake
-#
-# This module can find the GTK2 widget libraries and several of its
-# other optional components like gtkmm, glade, and glademm.
-#
-# NOTE: If you intend to use version checking, CMake 2.6.2 or later is
-#
-# ::
-#
-#        required.
-#
-#
-#
-# Specify one or more of the following components as you call this find
-# module.  See example below.
-#
-# ::
-#
-#    gtk
-#    gtkmm
-#    glade
-#    glademm
-#
-#
-#
-# The following variables will be defined for your use
-#
-# ::
-#
-#    GTK2_FOUND - Were all of your specified components found?
-#    GTK2_INCLUDE_DIRS - All include directories
-#    GTK2_LIBRARIES - All libraries
-#    GTK2_TARGETS - All imported targets
-#    GTK2_DEFINITIONS - Additional compiler flags
-#
-#
-#
-# ::
-#
-#    GTK2_VERSION - The version of GTK2 found (x.y.z)
-#    GTK2_MAJOR_VERSION - The major version of GTK2
-#    GTK2_MINOR_VERSION - The minor version of GTK2
-#    GTK2_PATCH_VERSION - The patch version of GTK2
-#
-#
-#
-# Optional variables you can define prior to calling this module:
-#
-# ::
-#
-#    GTK2_DEBUG - Enables verbose debugging of the module
-#    GTK2_ADDITIONAL_SUFFIXES - Allows defining additional directories to
-#                               search for include files
-#
-#
-#
-# ================= Example Usage:
-#
-# ::
-#
-#    Call find_package() once, here are some examples to pick from:
-#
-#
-#
-# ::
-#
-#    Require GTK 2.6 or later
-#        find_package(GTK2 2.6 REQUIRED gtk)
-#
-#
-#
-# ::
-#
-#    Require GTK 2.10 or later and Glade
-#        find_package(GTK2 2.10 REQUIRED gtk glade)
-#
-#
-#
-# ::
-#
-#    Search for GTK/GTKMM 2.8 or later
-#        find_package(GTK2 2.8 COMPONENTS gtk gtkmm)
-#
-#
-#
-# ::
-#
-#    if(GTK2_FOUND)
-#       include_directories(${GTK2_INCLUDE_DIRS})
-#       add_executable(mygui mygui.cc)
-#       target_link_libraries(mygui ${GTK2_LIBRARIES})
-#    endif()
+#[=======================================================================[.rst:
+FindGTK2
+--------
+
+FindGTK2.cmake
+
+This module can find the GTK2 widget libraries and several of its
+other optional components like gtkmm, glade, and glademm.
+
+NOTE: If you intend to use version checking, CMake 2.6.2 or later is
+
+::
+
+       required.
+
+
+
+Specify one or more of the following components as you call this find
+module.  See example below.
+
+::
+
+   gtk
+   gtkmm
+   glade
+   glademm
+
+
+
+The following variables will be defined for your use
+
+::
+
+   GTK2_FOUND - Were all of your specified components found?
+   GTK2_INCLUDE_DIRS - All include directories
+   GTK2_LIBRARIES - All libraries
+   GTK2_TARGETS - All imported targets
+   GTK2_DEFINITIONS - Additional compiler flags
+
+
+
+::
+
+   GTK2_VERSION - The version of GTK2 found (x.y.z)
+   GTK2_MAJOR_VERSION - The major version of GTK2
+   GTK2_MINOR_VERSION - The minor version of GTK2
+   GTK2_PATCH_VERSION - The patch version of GTK2
+
+
+
+Optional variables you can define prior to calling this module:
+
+::
+
+   GTK2_DEBUG - Enables verbose debugging of the module
+   GTK2_ADDITIONAL_SUFFIXES - Allows defining additional directories to
+                              search for include files
+
+
+
+================= Example Usage:
+
+::
+
+   Call find_package() once, here are some examples to pick from:
+
+
+
+::
+
+   Require GTK 2.6 or later
+       find_package(GTK2 2.6 REQUIRED gtk)
+
+
+
+::
+
+   Require GTK 2.10 or later and Glade
+       find_package(GTK2 2.10 REQUIRED gtk glade)
+
+
+
+::
+
+   Search for GTK/GTKMM 2.8 or later
+       find_package(GTK2 2.8 COMPONENTS gtk gtkmm)
+
+
+
+::
+
+   if(GTK2_FOUND)
+      include_directories(${GTK2_INCLUDE_DIRS})
+      add_executable(mygui mygui.cc)
+      target_link_libraries(mygui ${GTK2_LIBRARIES})
+   endif()
+#]=======================================================================]
 
 # Version 1.6 (CMake 3.0)
 #   * Create targets for each library
@@ -352,13 +353,9 @@ function(_GTK2_FIND_LIBRARY _var _lib _expand_vc _append_version)
 
     if(_expand_vc AND MSVC)
         # Add vc80/vc90/vc100 midfixes
-        if(MSVC_VERSION EQUAL 1400)
-            set(_library   ${_library}-vc80)
-        elseif(MSVC_VERSION EQUAL 1500)
-            set(_library   ${_library}-vc90)
-        elseif(MSVC_VERSION EQUAL 1600)
-            set(_library ${_library}-vc100)
-        elseif(MSVC_VERSION EQUAL 1700)
+        if(MSVC_TOOLSET_VERSION LESS 110)
+            set(_library   ${_library}-vc${MSVC_TOOLSET_VERSION})
+        else()
             # Up to gtkmm-win 2.22.0-2 there are no vc110 libraries but vc100 can be used
             set(_library ${_library}-vc100)
         endif()

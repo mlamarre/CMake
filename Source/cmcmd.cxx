@@ -9,6 +9,7 @@
 #include "cmMakefile.h"
 #include "cmQtAutoGeneratorMocUic.h"
 #include "cmQtAutoGeneratorRcc.h"
+#include "cmState.h"
 #include "cmStateDirectory.h"
 #include "cmStateSnapshot.h"
 #include "cmSystemTools.h"
@@ -17,17 +18,18 @@
 #include "cmake.h"
 
 #if defined(CMAKE_BUILD_WITH_CMAKE)
-#include "cmDependsFortran.h" // For -E cmake_copy_f90_mod callback.
-#include "cmServer.h"
-#include "cmServerConnection.h"
+#  include "cmDependsFortran.h" // For -E cmake_copy_f90_mod callback.
+#  include "cmServer.h"
+#  include "cmServerConnection.h"
 #endif
 
 #if defined(CMAKE_BUILD_WITH_CMAKE) && defined(_WIN32)
-#include "bindexplib.h"
+#  include "bindexplib.h"
+#  include "cmsys/ConsoleBuf.hxx"
 #endif
 
 #if defined(CMAKE_BUILD_WITH_CMAKE) && defined(_WIN32) && !defined(__CYGWIN__)
-#include "cmVisualStudioWCEPlatformParser.h"
+#  include "cmVisualStudioWCEPlatformParser.h"
 #endif
 
 #include "cmsys/Directory.hxx"
@@ -43,6 +45,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <utility>
 
 class cmConnection;
 
@@ -107,6 +110,7 @@ void CMakeCommandUsage(const char* program)
     << "  time command [args...]    - run command and display elapsed time\n"
     << "  touch file                - touch a file.\n"
     << "  touch_nocreate file       - touch a file but do not create it.\n"
+    << "  create_symlink old new    - create a symbolic link new -> old\n"
 #if defined(_WIN32) && !defined(__CYGWIN__)
     << "Available on Windows only:\n"
     << "  delete_regv key           - delete registry value\n"
@@ -115,9 +119,6 @@ void CMakeCommandUsage(const char* program)
     << "  env_vs9_wince sdkname     - displays a batch file which sets the "
        "environment for the provided Windows CE SDK installed in VS2008\n"
     << "  write_regv key value      - write registry value\n"
-#else
-    << "Available on UNIX only:\n"
-    << "  create_symlink old new    - create a symbolic link new -> old\n"
 #endif
     ;
   /* clang-format on */
@@ -200,7 +201,7 @@ static int HandleTidy(const std::string& runCmd, const std::string& sourceFile,
   std::vector<std::string> tidy_cmd;
   cmSystemTools::ExpandListArgument(runCmd, tidy_cmd, true);
   tidy_cmd.push_back(sourceFile);
-  tidy_cmd.push_back("--");
+  tidy_cmd.emplace_back("--");
   tidy_cmd.insert(tidy_cmd.end(), orig_cmd.begin(), orig_cmd.end());
 
   // Run the tidy command line.  Capture its stdout and hide its stderr.
@@ -227,9 +228,9 @@ static int HandleLWYU(const std::string& runCmd,
   // Construct the ldd -r -u (link what you use lwyu) command line
   // ldd -u -r lwuy target
   std::vector<std::string> lwyu_cmd;
-  lwyu_cmd.push_back("ldd");
-  lwyu_cmd.push_back("-u");
-  lwyu_cmd.push_back("-r");
+  lwyu_cmd.emplace_back("ldd");
+  lwyu_cmd.emplace_back("-u");
+  lwyu_cmd.emplace_back("-r");
   lwyu_cmd.push_back(runCmd);
 
   // Run the ldd -u -r command line.
@@ -271,9 +272,12 @@ static int HandleCppLint(const std::string& runCmd,
               << "\n";
     return 1;
   }
-  std::cerr << "Warning: cpplint diagnostics:\n";
-  // Output the output from cpplint to stderr
-  std::cerr << stdOut;
+  if (!stdOut.empty()) {
+    std::cerr << "Warning: cpplint diagnostics:\n";
+    // Output the output from cpplint to stderr
+    std::cerr << stdOut;
+  }
+
   // always return 0 so the build can continue as cpplint returns non-zero
   // for any warning
   return 0;
@@ -324,11 +328,15 @@ static int HandleCppCheck(const std::string& runCmd,
       stdErr.find("(performance)") != std::string::npos ||
       stdErr.find("(portability)") != std::string::npos ||
       stdErr.find("(information)") != std::string::npos) {
-    std::cerr << "Warning: cppcheck reported diagnostics:\n";
+    if (ret == 0) {
+      std::cerr << "Warning: cppcheck reported diagnostics:\n";
+    } else {
+      std::cerr << "Error: cppcheck reported failure:\n";
+    }
   }
   std::cerr << stdErr;
-  // ignore errors so build continues
-  return 0;
+
+  return ret;
 }
 
 typedef int (*CoCompileHandler)(const std::string&, const std::string&,
@@ -359,7 +367,8 @@ struct CoCompileJob
 int cmcmd::HandleCoCompileCommands(std::vector<std::string>& args)
 {
   std::vector<CoCompileJob> jobs;
-  std::string sourceFile; // store --source=
+  std::string sourceFile;             // store --source=
+  std::vector<std::string> launchers; // store --launcher=
 
   // Default is to run the original command found after -- if the option
   // does not need to do that, it should be specified here, currently only
@@ -390,15 +399,17 @@ int cmcmd::HandleCoCompileCommands(std::vector<std::string>& args)
           }
         }
       }
-      if (cmHasLiteralPrefix(arg, "--source=")) {
-        sourceFile = arg.substr(9);
-        optionFound = true;
-      }
-      // if it was not a co-compiler or --source then error
       if (!optionFound) {
-        std::cerr << "__run_co_compile given unknown argument: " << arg
-                  << "\n";
-        return 1;
+        if (cmHasLiteralPrefix(arg, "--source=")) {
+          sourceFile = arg.substr(9);
+        } else if (cmHasLiteralPrefix(arg, "--launcher=")) {
+          cmSystemTools::ExpandListArgument(arg.substr(11), launchers, true);
+        } else {
+          // if it was not a co-compiler or --source/--launcher then error
+          std::cerr << "__run_co_compile given unknown argument: " << arg
+                    << "\n";
+          return 1;
+        }
       }
     } else { // if not doing_options then push to orig_cmd
       orig_cmd.push_back(arg);
@@ -436,6 +447,11 @@ int cmcmd::HandleCoCompileCommands(std::vector<std::string>& args)
     return 0;
   }
 
+  // Prepend launcher argument(s), if any
+  if (!launchers.empty()) {
+    orig_cmd.insert(orig_cmd.begin(), launchers.begin(), launchers.end());
+  }
+
   // Now run the real compiler command and return its result value
   int ret;
   if (!cmSystemTools::RunSingleCommand(orig_cmd, nullptr, nullptr, &ret,
@@ -457,18 +473,18 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string>& args)
       // If multiple source files specified,
       // then destination must be directory
       if ((args.size() > 4) &&
-          (!cmSystemTools::FileIsDirectory(args[args.size() - 1]))) {
-        std::cerr << "Error: Target (for copy command) \""
-                  << args[args.size() - 1] << "\" is not a directory.\n";
+          (!cmSystemTools::FileIsDirectory(args.back()))) {
+        std::cerr << "Error: Target (for copy command) \"" << args.back()
+                  << "\" is not a directory.\n";
         return 1;
       }
       // If error occurs we want to continue copying next files.
       bool return_value = false;
       for (std::string::size_type cc = 2; cc < args.size() - 1; cc++) {
         if (!cmSystemTools::cmCopyFile(args[cc].c_str(),
-                                       args[args.size() - 1].c_str())) {
+                                       args.back().c_str())) {
           std::cerr << "Error copying file \"" << args[cc] << "\" to \""
-                    << args[args.size() - 1] << "\".\n";
+                    << args.back() << "\".\n";
           return_value = true;
         }
       }
@@ -480,18 +496,18 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string>& args)
       // If multiple source files specified,
       // then destination must be directory
       if ((args.size() > 4) &&
-          (!cmSystemTools::FileIsDirectory(args[args.size() - 1]))) {
+          (!cmSystemTools::FileIsDirectory(args.back()))) {
         std::cerr << "Error: Target (for copy_if_different command) \""
-                  << args[args.size() - 1] << "\" is not a directory.\n";
+                  << args.back() << "\" is not a directory.\n";
         return 1;
       }
       // If error occurs we want to continue copying next files.
       bool return_value = false;
       for (std::string::size_type cc = 2; cc < args.size() - 1; cc++) {
-        if (!cmSystemTools::CopyFileIfDifferent(
-              args[cc].c_str(), args[args.size() - 1].c_str())) {
+        if (!cmSystemTools::CopyFileIfDifferent(args[cc].c_str(),
+                                                args.back().c_str())) {
           std::cerr << "Error copying file (if different) from \"" << args[cc]
-                    << "\" to \"" << args[args.size() - 1] << "\".\n";
+                    << "\" to \"" << args.back() << "\".\n";
           return_value = true;
         }
       }
@@ -503,9 +519,9 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string>& args)
       // If error occurs we want to continue copying next files.
       bool return_value = false;
       for (std::string::size_type cc = 2; cc < args.size() - 1; cc++) {
-        if (!cmSystemTools::CopyADirectory(args[cc], args[args.size() - 1])) {
+        if (!cmSystemTools::CopyADirectory(args[cc], args.back())) {
           std::cerr << "Error copying directory from \"" << args[cc]
-                    << "\" to \"" << args[args.size() - 1] << "\".\n";
+                    << "\" to \"" << args.back() << "\".\n";
           return_value = true;
         }
       }
@@ -680,6 +696,8 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string>& args)
     if (args[1] == "touch" && args.size() > 2) {
       for (std::string::size_type cc = 2; cc < args.size(); cc++) {
         if (!cmSystemTools::Touch(args[cc], true)) {
+          std::cerr << "cmake -E touch: failed to update \"";
+          std::cerr << args[cc] << "\".\n";
           return 1;
         }
       }
@@ -689,9 +707,9 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string>& args)
     // Touch file
     if (args[1] == "touch_nocreate" && args.size() > 2) {
       for (std::string::size_type cc = 2; cc < args.size(); cc++) {
-        // Complain if the file could not be removed, still exists,
-        // and the -f option was not given.
         if (!cmSystemTools::Touch(args[cc], false)) {
+          std::cerr << "cmake -E touch_nocreate: failed to update \"";
+          std::cerr << args[cc] << "\".\n";
           return 1;
         }
       }
@@ -704,7 +722,7 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string>& args)
         std::cerr << "-E capabilities accepts no additional arguments\n";
         return 1;
       }
-      cmake cm(cmake::RoleInternal);
+      cmake cm(cmake::RoleInternal, cmState::Unknown);
 #if defined(CMAKE_BUILD_WITH_CMAKE)
       std::cout << cm.ReportCapabilities(true);
 #else
@@ -861,9 +879,6 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string>& args)
         return 1;
       }
       if (!cmSystemTools::CreateSymlink(args[2], args[3])) {
-        std::string emsg = cmSystemTools::GetLastSystemError();
-        std::cerr << "failed to create symbolic link '" << destinationFileName
-                  << "': " << emsg << "\n";
         return 1;
       }
       return 0;
@@ -884,7 +899,8 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string>& args)
       const bool verbose = isCMakeVerbose();
 
       // Create a cmake object instance to process dependencies.
-      cmake cm(cmake::RoleScript); // All we need is the `set` command.
+      // All we need is the `set` command.
+      cmake cm(cmake::RoleScript, cmState::Unknown);
       std::string gen;
       std::string homeDir;
       std::string startDir;
@@ -910,8 +926,8 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string>& args)
         if (args.size() >= 9 && args[8].length() >= 8 &&
             args[8].substr(0, 8) == "--color=") {
           // Enable or disable color based on the switch value.
-          color = (args[8].size() == 8 ||
-                   cmSystemTools::IsOn(args[8].substr(8).c_str()));
+          color =
+            (args[8].size() == 8 || cmSystemTools::IsOn(args[8].substr(8)));
         }
       } else {
         // Support older signature for existing makefiles:
@@ -1007,7 +1023,7 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string>& args)
       std::string config;
       if (args.size() > 3) {
         config = args[3];
-      };
+      }
       return autoGen.Run(infoFile, config) ? 0 : 1;
     }
 #endif
@@ -1347,7 +1363,7 @@ int cmcmd::ExecuteEchoColor(std::vector<std::string>& args)
       // Enable or disable color based on the switch value.
       std::string value = args[i].substr(9);
       if (!value.empty()) {
-        enabled = cmSystemTools::IsOn(value.c_str());
+        enabled = cmSystemTools::IsOn(value);
       }
     } else if (cmHasLiteralPrefix(args[i], "--progress-dir=")) {
       progressDir = args[i].substr(15);
@@ -1400,7 +1416,7 @@ int cmcmd::ExecuteLinkScript(std::vector<std::string>& args)
   bool verbose = false;
   if (args.size() >= 4) {
     if (args[3].find("--verbose=") == 0) {
-      if (!cmSystemTools::IsOff(args[3].substr(10).c_str())) {
+      if (!cmSystemTools::IsOff(args[3].substr(10))) {
         verbose = true;
       }
     }
@@ -1471,7 +1487,7 @@ int cmcmd::ExecuteLinkScript(std::vector<std::string>& args)
         break;
       default:
         break;
-    };
+    }
   }
 
   // Free the process instance.
@@ -1515,6 +1531,8 @@ class cmVSLink
   std::string ManifestFileRC;
   std::string ManifestFileRes;
   std::string TargetFile;
+  std::string MtPath;
+  std::string RcPath;
 
 public:
   cmVSLink(int type, bool verbose)
@@ -1539,6 +1557,15 @@ private:
 // still works.
 int cmcmd::VisualStudioLink(std::vector<std::string> const& args, int type)
 {
+#if defined(_WIN32) && defined(CMAKE_BUILD_WITH_CMAKE)
+  // Replace streambuf so we output in the system codepage. CMake is set up
+  // to output in Unicode (see SetUTF8Pipes) but the Visual Studio linker
+  // outputs using the system codepage so we need to change behavior when
+  // we run the link command.
+  cmsys::ConsoleBuf::Manager consoleOut(std::cout);
+  cmsys::ConsoleBuf::Manager consoleErr(std::cerr, true);
+#endif
+
   if (args.size() < 2) {
     return -1;
   }
@@ -1649,6 +1676,12 @@ bool cmVSLink::Parse(std::vector<std::string>::const_iterator argBeg,
     } else if (cmHasLiteralPrefix(*arg, "--intdir=")) {
       intDir = arg->substr(9);
       ++arg;
+    } else if (cmHasLiteralPrefix(*arg, "--rc=")) {
+      this->RcPath = arg->substr(5);
+      ++arg;
+    } else if (cmHasLiteralPrefix(*arg, "--mt=")) {
+      this->MtPath = arg->substr(5);
+      ++arg;
     } else {
       std::cerr << "unknown argument '" << *arg << "'\n";
       return false;
@@ -1700,7 +1733,7 @@ bool cmVSLink::Parse(std::vector<std::string>::const_iterator argBeg,
   }
 
   if (this->LinkGeneratesManifest) {
-    this->LinkCommand.push_back("/MANIFEST");
+    this->LinkCommand.emplace_back("/MANIFEST");
     this->LinkCommand.push_back("/MANIFESTFILE:" + this->LinkerManifestFile);
   }
 
@@ -1769,8 +1802,11 @@ int cmVSLink::LinkIncremental()
     if (!fout) {
       return -1;
     }
-    fout << this->Type << " /* CREATEPROCESS_MANIFEST_RESOURCE_ID */ "
-                          "24 /* RT_MANIFEST */ \""
+    // Insert a pragma statement to specify utf-8 encoding.
+    fout << "#pragma code_page(65001)\n";
+    fout << this->Type
+         << " /* CREATEPROCESS_MANIFEST_RESOURCE_ID */ "
+            "24 /* RT_MANIFEST */ \""
          << absManifestFile << "\"";
   }
 
@@ -1785,7 +1821,7 @@ int cmVSLink::LinkIncremental()
 
   // Compile the resource file.
   std::vector<std::string> rcCommand;
-  rcCommand.push_back("rc");
+  rcCommand.push_back(this->RcPath.empty() ? "rc" : this->RcPath);
   rcCommand.push_back("/fo" + this->ManifestFileRes);
   rcCommand.push_back(this->ManifestFileRC);
   if (!RunCommand("RC Pass 1", rcCommand, this->Verbose, FORMAT_DECIMAL)) {
@@ -1844,9 +1880,9 @@ int cmVSLink::LinkNonIncremental()
 int cmVSLink::RunMT(std::string const& out, bool notify)
 {
   std::vector<std::string> mtCommand;
-  mtCommand.push_back("mt");
-  mtCommand.push_back("/nologo");
-  mtCommand.push_back("/manifest");
+  mtCommand.push_back(this->MtPath.empty() ? "mt" : this->MtPath);
+  mtCommand.emplace_back("/nologo");
+  mtCommand.emplace_back("/manifest");
   if (this->LinkGeneratesManifest) {
     mtCommand.push_back(this->LinkerManifestFile);
   }
@@ -1856,7 +1892,7 @@ int cmVSLink::RunMT(std::string const& out, bool notify)
   if (notify) {
     // Add an undocumented option that enables a special return
     // code to notify us when the manifest is modified.
-    mtCommand.push_back("/notify_update");
+    mtCommand.emplace_back("/notify_update");
   }
   int mtRet = 0;
   if (!RunCommand("MT", mtCommand, this->Verbose, FORMAT_HEX, &mtRet,

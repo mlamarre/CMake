@@ -26,7 +26,7 @@ class cmCursesMainForm : public cmCursesForm
   CM_DISABLE_COPY(cmCursesMainForm)
 
 public:
-  cmCursesMainForm(std::vector<std::string> const& args, int initwidth);
+  cmCursesMainForm(std::vector<std::string> args, int initwidth);
   ~cmCursesMainForm() override;
 
   /**
@@ -125,7 +125,7 @@ protected:
   std::vector<cmCursesCacheEntryComposite*>* Entries;
   // Errors produced during last run of cmake
   std::vector<std::string> Errors;
-  // Command line argumens to be passed to cmake each time
+  // Command line arguments to be passed to cmake each time
   // it is run
   std::vector<std::string> Args;
   // Message displayed when user presses 'h'

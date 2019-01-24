@@ -10,7 +10,6 @@
 #include <utility>
 
 cmInstalledFile::cmInstalledFile()
-  : NameExpression(nullptr)
 {
 }
 
@@ -102,7 +101,7 @@ bool cmInstalledFile::GetPropertyAsBool(const std::string& prop) const
 {
   std::string value;
   bool isSet = this->GetProperty(prop, value);
-  return isSet && cmSystemTools::IsOn(value.c_str());
+  return isSet && cmSystemTools::IsOn(value);
 }
 
 void cmInstalledFile::GetPropertyAsList(const std::string& prop,

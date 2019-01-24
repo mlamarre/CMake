@@ -17,7 +17,6 @@
 #include <vector>
 
 cmExtraKateGenerator::cmExtraKateGenerator()
-  : cmExternalMakefileProjectGenerator()
 {
 }
 
@@ -58,7 +57,7 @@ void cmExtraKateGenerator::CreateKateProjectFile(
 {
   std::string filename = lg->GetBinaryDirectory();
   filename += "/.kateproject";
-  cmGeneratedFileStream fout(filename.c_str());
+  cmGeneratedFileStream fout(filename);
   if (!fout) {
     return;
   }
@@ -199,8 +198,9 @@ void cmExtraKateGenerator::AppendTarget(cmGeneratedFileStream& fout,
 {
   static char JsonSep = ' ';
 
-  fout << "\t\t\t" << JsonSep << "{\"name\":\"" << target << "\", "
-                                                             "\"build_cmd\":\""
+  fout << "\t\t\t" << JsonSep << "{\"name\":\"" << target
+       << "\", "
+          "\"build_cmd\":\""
        << make << " -C \\\"" << (this->UseNinja ? homeOutputDir : path)
        << "\\\" " << makeArgs << " " << target << "\"}\n";
 
@@ -214,7 +214,7 @@ void cmExtraKateGenerator::CreateDummyKateProjectFile(
   filename += "/";
   filename += this->ProjectName;
   filename += ".kateproject";
-  cmGeneratedFileStream fout(filename.c_str());
+  cmGeneratedFileStream fout(filename);
   if (!fout) {
     return;
   }
@@ -293,8 +293,7 @@ std::string cmExtraKateGenerator::GetPathBasename(
 {
   std::string outputBasename = path;
   while (!outputBasename.empty() &&
-         (outputBasename[outputBasename.size() - 1] == '/' ||
-          outputBasename[outputBasename.size() - 1] == '\\')) {
+         (outputBasename.back() == '/' || outputBasename.back() == '\\')) {
     outputBasename.resize(outputBasename.size() - 1);
   }
   std::string::size_type loc = outputBasename.find_last_of("/\\");

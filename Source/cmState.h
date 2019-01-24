@@ -12,6 +12,7 @@
 
 #include "cmDefinitions.h"
 #include "cmLinkedTree.h"
+#include "cmListFileCache.h"
 #include "cmPolicies.h"
 #include "cmProperty.h"
 #include "cmPropertyDefinitionMap.h"
@@ -21,6 +22,7 @@
 
 class cmCacheManager;
 class cmCommand;
+class cmGlobVerificationManager;
 class cmPropertyDefinition;
 class cmStateSnapshot;
 class cmMessenger;
@@ -32,6 +34,16 @@ class cmState
 public:
   cmState();
   ~cmState();
+
+  enum Mode
+  {
+    Unknown,
+    Project,
+    Script,
+    FindPackage,
+    CTest,
+    CPack,
+  };
 
   static const char* GetTargetTypeName(cmStateEnums::TargetType targetType);
 
@@ -66,7 +78,7 @@ public:
 
   std::vector<std::string> GetCacheEntryKeys() const;
   const char* GetCacheEntryValue(std::string const& key) const;
-  const char* GetInitializedCacheValue(std::string const& key) const;
+  const std::string* GetInitializedCacheValue(std::string const& key) const;
   cmStateEnums::CacheEntryType GetCacheEntryType(std::string const& key) const;
   void SetCacheEntryValue(std::string const& key, std::string const& value);
   void SetCacheValue(std::string const& key, std::string const& value);
@@ -123,12 +135,17 @@ public:
   bool GetIsGeneratorMultiConfig() const;
   void SetIsGeneratorMultiConfig(bool b);
 
+  // Returns a command from its name, case insensitive, or nullptr
   cmCommand* GetCommand(std::string const& name) const;
+  // Returns a command from its name, or nullptr
+  cmCommand* GetCommandByExactName(std::string const& name) const;
+
   void AddBuiltinCommand(std::string const& name, cmCommand* command);
   void AddDisallowedCommand(std::string const& name, cmCommand* command,
                             cmPolicies::PolicyID policy, const char* message);
   void AddUnexpectedCommand(std::string const& name, const char* error);
   void AddScriptedCommand(std::string const& name, cmCommand* command);
+  void RemoveBuiltinCommand(std::string const& name);
   void RemoveUserDefinedCommands();
   std::vector<std::string> GetCommandNames() const;
 
@@ -147,6 +164,8 @@ public:
   bool UseWindowsShell() const;
   void SetWindowsVSIDE(bool windowsVSIDE);
   bool UseWindowsVSIDE() const;
+  void SetGhsMultiIDE(bool ghsMultiIDE);
+  bool UseGhsMultiIDE() const;
   void SetWatcomWMake(bool watcomWMake);
   bool UseWatcomWMake() const;
   void SetMinGWMake(bool minGWMake);
@@ -159,11 +178,28 @@ public:
   unsigned int GetCacheMajorVersion() const;
   unsigned int GetCacheMinorVersion() const;
 
+  Mode GetMode() const;
+  std::string GetModeString() const;
+  void SetMode(Mode mode);
+
+  static std::string ModeToString(Mode mode);
+
 private:
   friend class cmake;
   void AddCacheEntry(const std::string& key, const char* value,
                      const char* helpString,
                      cmStateEnums::CacheEntryType type);
+
+  bool DoWriteGlobVerifyTarget() const;
+  std::string const& GetGlobVerifyScript() const;
+  std::string const& GetGlobVerifyStamp() const;
+  bool SaveVerificationScript(const std::string& path);
+  void AddGlobCacheEntry(bool recurse, bool listDirectories,
+                         bool followSymlinks, const std::string& relative,
+                         const std::string& expression,
+                         const std::vector<std::string>& files,
+                         const std::string& variable,
+                         cmListFileBacktrace const& bt);
 
   std::map<cmProperty::ScopeType, cmPropertyDefinitionMap> PropertyDefinitions;
   std::vector<std::string> EnabledLanguages;
@@ -171,6 +207,7 @@ private:
   std::map<std::string, cmCommand*> ScriptedCommands;
   cmPropertyMap GlobalProperties;
   cmCacheManager* CacheManager;
+  cmGlobVerificationManager* GlobVerificationManager;
 
   cmLinkedTree<cmStateDetail::BuildsystemDirectoryStateType>
     BuildsystemDirectory;
@@ -183,14 +220,16 @@ private:
 
   std::string SourceDirectory;
   std::string BinaryDirectory;
-  bool IsInTryCompile;
-  bool IsGeneratorMultiConfig;
-  bool WindowsShell;
-  bool WindowsVSIDE;
-  bool WatcomWMake;
-  bool MinGWMake;
-  bool NMake;
-  bool MSYSShell;
+  bool IsInTryCompile = false;
+  bool IsGeneratorMultiConfig = false;
+  bool WindowsShell = false;
+  bool WindowsVSIDE = false;
+  bool GhsMultiIDE = false;
+  bool WatcomWMake = false;
+  bool MinGWMake = false;
+  bool NMake = false;
+  bool MSYSShell = false;
+  Mode CurrentMode = Unknown;
 };
 
 #endif

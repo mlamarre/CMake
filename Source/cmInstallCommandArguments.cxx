@@ -16,11 +16,10 @@ const char* cmInstallCommandArguments::PermissionsTable[] = {
 const std::string cmInstallCommandArguments::EmptyString;
 
 cmInstallCommandArguments::cmInstallCommandArguments(
-  const std::string& defaultComponent)
-  : Parser()
-  , ArgumentGroup()
-  , Destination(&Parser, "DESTINATION", &ArgumentGroup)
+  std::string defaultComponent)
+  : Destination(&Parser, "DESTINATION", &ArgumentGroup)
   , Component(&Parser, "COMPONENT", &ArgumentGroup)
+  , NamelinkComponent(&Parser, "NAMELINK_COMPONENT", &ArgumentGroup)
   , ExcludeFromAll(&Parser, "EXCLUDE_FROM_ALL", &ArgumentGroup)
   , Rename(&Parser, "RENAME", &ArgumentGroup)
   , Permissions(&Parser, "PERMISSIONS", &ArgumentGroup)
@@ -28,8 +27,9 @@ cmInstallCommandArguments::cmInstallCommandArguments(
   , Optional(&Parser, "OPTIONAL", &ArgumentGroup)
   , NamelinkOnly(&Parser, "NAMELINK_ONLY", &ArgumentGroup)
   , NamelinkSkip(&Parser, "NAMELINK_SKIP", &ArgumentGroup)
+  , Type(&Parser, "TYPE", &ArgumentGroup)
   , GenericArguments(nullptr)
-  , DefaultComponentName(defaultComponent)
+  , DefaultComponentName(std::move(defaultComponent))
 {
 }
 
@@ -57,6 +57,14 @@ const std::string& cmInstallCommandArguments::GetComponent() const
   }
   static std::string unspecifiedComponent = "Unspecified";
   return unspecifiedComponent;
+}
+
+const std::string& cmInstallCommandArguments::GetNamelinkComponent() const
+{
+  if (!this->NamelinkComponent.GetString().empty()) {
+    return this->NamelinkComponent.GetString();
+  }
+  return this->GetComponent();
 }
 
 const std::string& cmInstallCommandArguments::GetRename() const
@@ -125,6 +133,22 @@ bool cmInstallCommandArguments::GetNamelinkSkip() const
   return false;
 }
 
+bool cmInstallCommandArguments::HasNamelinkComponent() const
+{
+  if (!this->NamelinkComponent.GetString().empty()) {
+    return true;
+  }
+  if (this->GenericArguments != nullptr) {
+    return this->GenericArguments->HasNamelinkComponent();
+  }
+  return false;
+}
+
+const std::string& cmInstallCommandArguments::GetType() const
+{
+  return this->Type.GetString();
+}
+
 const std::vector<std::string>& cmInstallCommandArguments::GetConfigurations()
   const
 {
@@ -157,7 +181,8 @@ bool cmInstallCommandArguments::CheckPermissions()
 {
   this->PermissionsString.clear();
   for (std::string const& perm : this->Permissions.GetVector()) {
-    if (!this->CheckPermissions(perm, this->PermissionsString)) {
+    if (!cmInstallCommandArguments::CheckPermissions(
+          perm, this->PermissionsString)) {
       return false;
     }
   }

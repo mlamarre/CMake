@@ -10,8 +10,8 @@
 #include "cmAlgorithms.h"
 #include "cmExecutionStatus.h"
 #include "cmMakefile.h"
+#include "cmMessageType.h"
 #include "cmSystemTools.h"
-#include "cmake.h"
 
 cmForEachFunctionBlocker::cmForEachFunctionBlocker(cmMakefile* mf)
   : Makefile(mf)
@@ -29,16 +29,16 @@ bool cmForEachFunctionBlocker::IsFunctionBlocked(const cmListFileFunction& lff,
                                                  cmMakefile& mf,
                                                  cmExecutionStatus& inStatus)
 {
-  if (!cmSystemTools::Strucmp(lff.Name.c_str(), "foreach")) {
+  if (lff.Name.Lower == "foreach") {
     // record the number of nested foreach commands
     this->Depth++;
-  } else if (!cmSystemTools::Strucmp(lff.Name.c_str(), "endforeach")) {
+  } else if (lff.Name.Lower == "endforeach") {
     // if this is the endofreach for this statement
     if (!this->Depth) {
       // Remove the function blocker for this scope or bail.
       std::unique_ptr<cmFunctionBlocker> fb(
         mf.RemoveFunctionBlocker(this, lff));
-      if (!fb.get()) {
+      if (!fb) {
         return false;
       }
 
@@ -97,7 +97,7 @@ bool cmForEachFunctionBlocker::IsFunctionBlocked(const cmListFileFunction& lff,
 bool cmForEachFunctionBlocker::ShouldRemove(const cmListFileFunction& lff,
                                             cmMakefile& mf)
 {
-  if (!cmSystemTools::Strucmp(lff.Name.c_str(), "endforeach")) {
+  if (lff.Name.Lower == "endforeach") {
     std::vector<std::string> expandedArguments;
     mf.ExpandArguments(lff.Arguments, expandedArguments);
     // if the endforeach has arguments then make sure
@@ -164,7 +164,7 @@ bool cmForEachCommand::InitialPass(std::vector<std::string> const& args,
           break;
         }
         sprintf(buffer, "%d", cc);
-        range.push_back(buffer);
+        range.emplace_back(buffer);
         if (cc == stop) {
           break;
         }
@@ -210,7 +210,7 @@ bool cmForEachCommand::HandleInMode(std::vector<std::string> const& args)
       std::ostringstream e;
       e << "Unknown argument:\n"
         << "  " << args[i] << "\n";
-      this->Makefile->IssueMessage(cmake::FATAL_ERROR, e.str());
+      this->Makefile->IssueMessage(MessageType::FATAL_ERROR, e.str());
       return true;
     }
   }

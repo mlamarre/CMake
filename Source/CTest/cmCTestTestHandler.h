@@ -7,6 +7,7 @@
 
 #include "cmCTestGenericHandler.h"
 #include "cmDuration.h"
+#include "cmListFileCache.h"
 
 #include "cmsys/RegularExpression.hxx"
 #include <chrono>
@@ -130,6 +131,8 @@ public:
     int Index;
     // Requested number of process slots
     int Processors;
+    bool WantAffinity;
+    std::vector<size_t> Affinity;
     // return code of test which will mark test as "not run"
     int SkipReturnCode;
     std::vector<std::string> Environment;
@@ -139,6 +142,8 @@ public:
     std::set<std::string> FixturesCleanup;
     std::set<std::string> FixturesRequired;
     std::set<std::string> RequireSuccessDepends;
+    // Private test generator properties used to track backtraces
+    cmListFileBacktrace Backtrace;
   };
 
   struct cmCTestTestResult
@@ -272,7 +277,7 @@ private:
    */
   std::string FindTheExecutable(const char* exe);
 
-  const char* GetTestStatus(cmCTestTestResult const&);
+  std::string GetTestStatus(cmCTestTestResult const&);
   void ExpandTestsToRunInformation(size_t numPossibleTests);
   void ExpandTestsToRunInformationForRerunFailed();
 

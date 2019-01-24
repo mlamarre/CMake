@@ -5,14 +5,12 @@
 
 #include "cmConfigure.h" // IWYU pragma: keep
 
-#include "cmFilePathChecksum.h"
 #include "cmQtAutoGen.h"
 #include "cmQtAutoGenerator.h"
 #include "cmUVHandlePtr.h"
 #include "cm_uv.h"
 #include "cmsys/RegularExpression.hxx"
 
-#include <algorithm>
 #include <condition_variable>
 #include <cstddef>
 #include <deque>
@@ -22,6 +20,7 @@
 #include <set>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 class cmMakefile;
@@ -50,8 +49,8 @@ public:
     {
     }
 
-    KeyExpT(std::string const& key, std::string const& exp)
-      : Key(key)
+    KeyExpT(std::string key, std::string const& exp)
+      : Key(std::move(key))
       , Exp(exp)
     {
     }
@@ -95,7 +94,6 @@ public:
     std::string AutogenBuildDir;
     std::string AutogenIncludeDir;
     // - Files
-    cmFilePathChecksum FilePathChecksum;
     std::vector<std::string> HeaderExtensions;
     // - File system
     FileSystem* FileSys;
@@ -242,10 +240,10 @@ public:
   class JobMocT : public JobT
   {
   public:
-    JobMocT(std::string&& sourceFile, std::string const& includerFile,
+    JobMocT(std::string&& sourceFile, std::string includerFile,
             std::string&& includeString)
       : SourceFile(std::move(sourceFile))
-      , IncluderFile(includerFile)
+      , IncluderFile(std::move(includerFile))
       , IncludeString(std::move(includeString))
     {
     }
@@ -271,10 +269,10 @@ public:
   class JobUicT : public JobT
   {
   public:
-    JobUicT(std::string&& sourceFile, std::string const& includerFile,
+    JobUicT(std::string&& sourceFile, std::string includerFile,
             std::string&& includeString)
       : SourceFile(std::move(sourceFile))
-      , IncluderFile(includerFile)
+      , IncluderFile(std::move(includerFile))
       , IncludeString(std::move(includeString))
     {
     }
@@ -406,7 +404,7 @@ private:
   MocSettingsT Moc_;
   UicSettingsT Uic_;
   // -- Progress
-  StageT Stage_;
+  StageT Stage_ = StageT::SETTINGS_READ;
   // -- Job queues
   std::mutex JobsMutex_;
   struct
@@ -418,15 +416,15 @@ private:
     JobQueueT Uic;
   } JobQueues_;
   JobQueueT JobQueue_;
-  std::size_t volatile JobsRemain_;
-  bool volatile JobError_;
-  bool volatile JobThreadsAbort_;
+  std::size_t volatile JobsRemain_ = 0;
+  bool volatile JobError_ = false;
+  bool volatile JobThreadsAbort_ = false;
   std::condition_variable JobsConditionRead_;
   // -- Moc meta
   std::set<std::string> MocIncludedStrings_;
   std::set<std::string> MocIncludedFiles_;
   std::set<std::string> MocAutoFiles_;
-  bool volatile MocAutoFileUpdated_;
+  bool volatile MocAutoFileUpdated_ = false;
   // -- Settings file
   std::string SettingsFile_;
   std::string SettingsStringMoc_;

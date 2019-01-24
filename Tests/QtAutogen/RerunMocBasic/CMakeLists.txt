@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(RerunMocBasic)
-include("../AutogenTest.cmake")
+include("../AutogenCoreTest.cmake")
 
 # Dummy executable to generate a clean target
 add_executable(dummy dummy.cpp)
@@ -16,6 +16,7 @@ try_compile(MOC_RERUN
   "${mocBasicSrcDir}"
   MocBasic
   CMAKE_FLAGS "-DQT_TEST_VERSION=${QT_TEST_VERSION}"
+              "-DCMAKE_AUTOGEN_VERBOSE=${CMAKE_AUTOGEN_VERBOSE}"
               "-DQT_QMAKE_EXECUTABLE:FILEPATH=${QT_QMAKE_EXECUTABLE}"
   OUTPUT_VARIABLE output
 )

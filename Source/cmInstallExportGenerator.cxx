@@ -3,11 +3,12 @@
 #include "cmInstallExportGenerator.h"
 
 #include <algorithm>
+#include <map>
 #include <sstream>
 #include <utility>
 
 #ifdef CMAKE_BUILD_WITH_CMAKE
-#include "cmExportInstallAndroidMKGenerator.h"
+#  include "cmExportInstallAndroidMKGenerator.h"
 #endif
 #include "cmExportInstallFileGenerator.h"
 #include "cmExportSet.h"

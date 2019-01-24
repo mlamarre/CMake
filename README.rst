@@ -6,10 +6,12 @@ Introduction
 
 CMake is a cross-platform, open-source build system generator.
 For full documentation visit the `CMake Home Page`_ and the
-`CMake Documentation Page`_.
+`CMake Documentation Page`_. The `CMake Community Wiki`_ also
+references useful guides and recipes.
 
 .. _`CMake Home Page`: https://cmake.org
 .. _`CMake Documentation Page`: https://cmake.org/cmake/help/documentation.html
+.. _`CMake Community Wiki`: https://gitlab.kitware.com/cmake/community/wikis/home
 
 CMake is maintained and supported by `Kitware`_ and developed in
 collaboration with a productive community of contributors.
@@ -60,13 +62,13 @@ within the CMake source directory or any other build directory of your
 choice. Once this has finished successfully, run ``make`` and
 ``make install``.  In summary::
 
- $ ./bootstrap && make && make install
+ $ ./bootstrap && make && sudo make install
 
 Windows
 ^^^^^^^
 
 You need to download and install a binary release of CMake in order to build
-CMake.  You can get these releases from the `CMake Download Page`_ .  Then
+CMake.  You can get these releases from the `CMake Download Page`_.  Then
 proceed with the instructions below.
 
 .. _`CMake Download Page`: https://cmake.org/cmake/resources/software.html
@@ -80,6 +82,13 @@ options and generators. Then build it and install it.
 For instructions how to do this, see documentation on `Running CMake`_.
 
 .. _`Running CMake`: https://cmake.org/cmake/help/runningcmake.html
+
+To build the documentation, install `Sphinx`_ and configure CMake with
+``-DSPHINX_HTML=ON`` and/or ``-DSPHINX_MAN=ON`` to enable the "html" or
+"man" builder.  Add ``-DSPHINX_EXECUTABLE=/path/to/sphinx-build`` if the
+tool is not found automatically.
+
+.. _`Sphinx`: http://sphinx-doc.org
 
 Reporting Bugs
 ==============

@@ -52,6 +52,29 @@ function(CMAKE_DETERMINE_COMPILER_ID lang flagvar src)
     endforeach()
   endif()
 
+  # If the compiler is still unknown, fallback to GHS
+  if(NOT CMAKE_${lang}_COMPILER_ID  AND "${CMAKE_GENERATOR}" MATCHES "Green Hills MULTI")
+    set(CMAKE_${lang}_COMPILER_ID GHS)
+    file(APPEND ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeOutput.log
+        "The ${lang} compiler identification is falling back to GHS.\n\n")
+  endif()
+
+  # CUDA < 7.5 is missing version macros
+  if(lang STREQUAL "CUDA"
+     AND CMAKE_${lang}_COMPILER_ID STREQUAL "NVIDIA"
+     AND NOT CMAKE_${lang}_COMPILER_VERSION)
+    execute_process(
+      COMMAND "${CMAKE_${lang}_COMPILER}"
+      --version
+      OUTPUT_VARIABLE output ERROR_VARIABLE output
+      RESULT_VARIABLE result
+      TIMEOUT 10
+    )
+    if(output MATCHES [=[ V([0-9]+)\.([0-9]+)\.([0-9]+)]=])
+      set(CMAKE_${lang}_COMPILER_VERSION "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}.${CMAKE_MATCH_3}")
+    endif()
+  endif()
+
   if (COMPILER_QNXNTO AND CMAKE_${lang}_COMPILER_ID STREQUAL "GNU")
     execute_process(
       COMMAND "${CMAKE_${lang}_COMPILER}"
@@ -105,7 +128,7 @@ function(CMAKE_DETERMINE_COMPILER_ID lang flagvar src)
   set(CMAKE_${lang}_COMPILER_ARCHITECTURE_ID "${CMAKE_${lang}_COMPILER_ARCHITECTURE_ID}" PARENT_SCOPE)
   set(MSVC_${lang}_ARCHITECTURE_ID "${MSVC_${lang}_ARCHITECTURE_ID}"
     PARENT_SCOPE)
-  set(CMAKE_${lang}_XCODE_CURRENT_ARCH "${CMAKE_${lang}_XCODE_CURRENT_ARCH}" PARENT_SCOPE)
+  set(CMAKE_${lang}_XCODE_ARCHS "${CMAKE_${lang}_XCODE_ARCHS}" PARENT_SCOPE)
   set(CMAKE_${lang}_CL_SHOWINCLUDES_PREFIX "${CMAKE_${lang}_CL_SHOWINCLUDES_PREFIX}" PARENT_SCOPE)
   set(CMAKE_${lang}_COMPILER_VERSION "${CMAKE_${lang}_COMPILER_VERSION}" PARENT_SCOPE)
   set(CMAKE_${lang}_COMPILER_VERSION_INTERNAL "${CMAKE_${lang}_COMPILER_VERSION_INTERNAL}" PARENT_SCOPE)
@@ -197,9 +220,13 @@ Id flags: ${testflags} ${CMAKE_${lang}_COMPILER_ID_FLAGS_ALWAYS}
         if(CMAKE_VS_PLATFORM_TOOLSET MATCHES "Intel")
           set(id_cl icl.exe)
         endif()
+        if(CMAKE_VS_PLATFORM_TOOLSET_VERSION)
+          set(id_toolset_version_props "<Import Project=\"${CMAKE_GENERATOR_INSTANCE}\\VC\\Auxiliary\\Build\\${CMAKE_VS_PLATFORM_TOOLSET_VERSION}\\Microsoft.VCToolsVersion.${CMAKE_VS_PLATFORM_TOOLSET_VERSION}.props\" />")
+        endif()
       endif()
     else()
       set(id_toolset "")
+      set(id_toolset_version_props "")
     endif()
     if(CMAKE_VS_PLATFORM_TOOLSET_HOST_ARCHITECTURE)
       set(id_PreferredToolArchitecture "<PreferredToolArchitecture>${CMAKE_VS_PLATFORM_TOOLSET_HOST_ARCHITECTURE}</PreferredToolArchitecture>")
@@ -335,6 +362,12 @@ Id flags: ${testflags} ${CMAKE_${lang}_COMPILER_ID_FLAGS_ALWAYS}
     else()
       set(id_development_team "")
     endif()
+    if(DEFINED CMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY)
+      set(id_code_sign_identity
+        "CODE_SIGN_IDENTITY = \"${CMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY}\";")
+    else()
+      set(id_code_sign_identity "")
+    endif()
     configure_file(${CMAKE_ROOT}/Modules/CompilerId/Xcode-3.pbxproj.in
       ${id_dir}/CompilerId${lang}.xcodeproj/project.pbxproj @ONLY)
     unset(_ENV_MACOSX_DEPLOYMENT_TARGET)
@@ -360,8 +393,44 @@ Id flags: ${testflags} ${CMAKE_${lang}_COMPILER_ID_FLAGS_ALWAYS}
         endif()
       endif()
     endif()
-    if("${CMAKE_${lang}_COMPILER_ID_OUTPUT}" MATCHES "CURRENT_ARCH=([^%\r\n]+)[\r\n]")
-      set(CMAKE_${lang}_XCODE_CURRENT_ARCH "${CMAKE_MATCH_1}" PARENT_SCOPE)
+    if("${CMAKE_${lang}_COMPILER_ID_OUTPUT}" MATCHES "ARCHS=([^%\r\n]+)[\r\n]")
+      set(CMAKE_${lang}_XCODE_ARCHS "${CMAKE_MATCH_1}")
+      separate_arguments(CMAKE_${lang}_XCODE_ARCHS)
+      set(CMAKE_${lang}_XCODE_ARCHS "${CMAKE_${lang}_XCODE_ARCHS}" PARENT_SCOPE)
+    endif()
+  elseif("${CMAKE_GENERATOR}" MATCHES "Green Hills MULTI")
+    set(id_dir ${CMAKE_${lang}_COMPILER_ID_DIR})
+    set(id_src "${src}")
+    if (GHS_PRIMARY_TARGET)
+      set(ghs_primary_target "${GHS_PRIMARY_TARGET}")
+    else()
+      set(ghs_primary_target "${CMAKE_GENERATOR_PLATFORM}_${GHS_TARGET_PLATFORM}.tgt")
+    endif()
+    if ("${GHS_TARGET_PLATFORM}" MATCHES "integrity")
+        set(bsp_name "macro GHS_BSP=${GHS_BSP_NAME}")
+        set(os_dir "macro GHS_OS=${GHS_OS_DIR}")
+    endif()
+    set(command "${CMAKE_MAKE_PROGRAM}" "-commands" "-top" "GHS_default.gpj")
+    configure_file(${CMAKE_ROOT}/Modules/CompilerId/GHS_default.gpj.in
+      ${id_dir}/GHS_default.gpj @ONLY)
+    configure_file(${CMAKE_ROOT}/Modules/CompilerId/GHS_lib.gpj.in
+      ${id_dir}/GHS_lib.gpj @ONLY)
+    execute_process(COMMAND ${command}
+      WORKING_DIRECTORY ${id_dir}
+      OUTPUT_VARIABLE CMAKE_${lang}_COMPILER_ID_OUTPUT
+      ERROR_VARIABLE CMAKE_${lang}_COMPILER_ID_OUTPUT
+      RESULT_VARIABLE CMAKE_${lang}_COMPILER_ID_RESULT
+      )
+    # Match the compiler location line printed out.
+    set(ghs_toolpath "${CMAKE_MAKE_PROGRAM}")
+    string(REPLACE "/gbuild.exe" "/" ghs_toolpath ${ghs_toolpath})
+    string(REPLACE / "\\\\" ghs_toolpath ${ghs_toolpath})
+    if("${CMAKE_${lang}_COMPILER_ID_OUTPUT}" MATCHES "(${ghs_toolpath}[^ ]*)")
+      set(_comp "${CMAKE_MATCH_1}.exe")
+      if(EXISTS "${_comp}")
+        file(TO_CMAKE_PATH "${_comp}" _comp)
+        set(CMAKE_${lang}_COMPILER_ID_TOOL "${_comp}" PARENT_SCOPE)
+      endif()
     endif()
   else()
     execute_process(
@@ -495,11 +564,20 @@ function(CMAKE_DETERMINE_COMPILER_ID_CHECK lang file)
     file(STRINGS ${file}
       CMAKE_${lang}_COMPILER_ID_STRINGS LIMIT_COUNT 38
       ${CMAKE_${lang}_COMPILER_ID_STRINGS_PARAMETERS}
-      REGEX "INFO:[A-Za-z0-9_]+\\[[^]]*\\]")
+      REGEX ".?I.?N.?F.?O.?:.?[A-Za-z0-9_]+\\[[^]]*\\]")
     set(COMPILER_ID_TWICE)
+    # With the IAR Compiler, some strings are found twice, first time as incomplete
+    # list like "?<Constant "INFO:compiler[IAR]">".  Remove the incomplete copies.
+    list(FILTER CMAKE_${lang}_COMPILER_ID_STRINGS EXCLUDE REGEX "\\?<Constant \\\"")
     # In C# binaries, some strings are found more than once.
     list(REMOVE_DUPLICATES CMAKE_${lang}_COMPILER_ID_STRINGS)
     foreach(info ${CMAKE_${lang}_COMPILER_ID_STRINGS})
+      # The IAR-AVR compiler uses a binary format that places a '6'
+      # character (0x34) before each character in the string.  Strip
+      # out these characters without removing any legitamate characters.
+      if("${info}" MATCHES "(.)I.N.F.O.:.")
+        string(REGEX REPLACE "${CMAKE_MATCH_1}(.)" "\\1" info "${info}")
+      endif()
       if("${info}" MATCHES "INFO:compiler\\[([^]\"]*)\\]")
         if(COMPILER_ID)
           set(COMPILER_ID_TWICE 1)
@@ -513,7 +591,7 @@ function(CMAKE_DETERMINE_COMPILER_ID_CHECK lang file)
         set(ARCHITECTURE_ID "${CMAKE_MATCH_1}")
       endif()
       if("${info}" MATCHES "INFO:compiler_version\\[([^]\"]*)\\]")
-        string(REGEX REPLACE "^0+([0-9])" "\\1" COMPILER_VERSION "${CMAKE_MATCH_1}")
+        string(REGEX REPLACE "^0+([0-9]+)" "\\1" COMPILER_VERSION "${CMAKE_MATCH_1}")
         string(REGEX REPLACE "\\.0+([0-9])" ".\\1" COMPILER_VERSION "${COMPILER_VERSION}")
       endif()
       if("${info}" MATCHES "INFO:compiler_version_internal\\[([^]\"]*)\\]")
@@ -565,26 +643,28 @@ function(CMAKE_DETERMINE_COMPILER_ID_CHECK lang file)
     if(WIN32)
       # The offset to the PE signature is stored at 0x3c.
       file(READ ${file} peoffsethex LIMIT 1 OFFSET 60 HEX)
-      string(SUBSTRING "${peoffsethex}" 0 1 peoffsethex1)
-      string(SUBSTRING "${peoffsethex}" 1 1 peoffsethex2)
-      set(peoffsetexpression "${peoffsethex1} * 16 + ${peoffsethex2}")
-      string(REPLACE "a" "10" peoffsetexpression "${peoffsetexpression}")
-      string(REPLACE "b" "11" peoffsetexpression "${peoffsetexpression}")
-      string(REPLACE "c" "12" peoffsetexpression "${peoffsetexpression}")
-      string(REPLACE "d" "13" peoffsetexpression "${peoffsetexpression}")
-      string(REPLACE "e" "14" peoffsetexpression "${peoffsetexpression}")
-      string(REPLACE "f" "15" peoffsetexpression "${peoffsetexpression}")
-      math(EXPR peoffset "${peoffsetexpression}")
+      if(NOT peoffsethex STREQUAL "")
+        string(SUBSTRING "${peoffsethex}" 0 1 peoffsethex1)
+        string(SUBSTRING "${peoffsethex}" 1 1 peoffsethex2)
+        set(peoffsetexpression "${peoffsethex1} * 16 + ${peoffsethex2}")
+        string(REPLACE "a" "10" peoffsetexpression "${peoffsetexpression}")
+        string(REPLACE "b" "11" peoffsetexpression "${peoffsetexpression}")
+        string(REPLACE "c" "12" peoffsetexpression "${peoffsetexpression}")
+        string(REPLACE "d" "13" peoffsetexpression "${peoffsetexpression}")
+        string(REPLACE "e" "14" peoffsetexpression "${peoffsetexpression}")
+        string(REPLACE "f" "15" peoffsetexpression "${peoffsetexpression}")
+        math(EXPR peoffset "${peoffsetexpression}")
 
-      file(READ ${file} peheader LIMIT 6 OFFSET ${peoffset} HEX)
-      if(peheader STREQUAL "50450000a201")
-        set(ARCHITECTURE_ID "SH3")
-      elseif(peheader STREQUAL "50450000a301")
-        set(ARCHITECTURE_ID "SH3DSP")
-      elseif(peheader STREQUAL "50450000a601")
-        set(ARCHITECTURE_ID "SH4")
-      elseif(peheader STREQUAL "50450000a801")
-        set(ARCHITECTURE_ID "SH5")
+        file(READ ${file} peheader LIMIT 6 OFFSET ${peoffset} HEX)
+        if(peheader STREQUAL "50450000a201")
+          set(ARCHITECTURE_ID "SH3")
+        elseif(peheader STREQUAL "50450000a301")
+          set(ARCHITECTURE_ID "SH3DSP")
+        elseif(peheader STREQUAL "50450000a601")
+          set(ARCHITECTURE_ID "SH4")
+        elseif(peheader STREQUAL "50450000a801")
+          set(ARCHITECTURE_ID "SH5")
+        endif()
       endif()
     endif()
 
@@ -628,13 +708,10 @@ function(CMAKE_DETERMINE_COMPILER_ID_CHECK lang file)
 #      set(CMAKE_EXECUTABLE_FORMAT "COFF" CACHE STRING "Executable file format")
 #    endif()
 #
-#    # Mach-O files start with CAFEBABE or FEEDFACE, according to http://radio.weblogs.com/0100490/2003/01/28.html
-#    if("${CMAKE_EXECUTABLE_MAGIC}" MATCHES "cafebabe")
-#      set(CMAKE_EXECUTABLE_FORMAT "MACHO" CACHE STRING "Executable file format")
-#    endif()
-#    if("${CMAKE_EXECUTABLE_MAGIC}" MATCHES "feedface")
-#      set(CMAKE_EXECUTABLE_FORMAT "MACHO" CACHE STRING "Executable file format")
-#    endif()
+    # Mach-O files start with MH_MAGIC or MH_CIGAM
+    if("${CMAKE_EXECUTABLE_MAGIC}" MATCHES "feedface|cefaedfe|feedfacf|cffaedfe")
+      set(CMAKE_EXECUTABLE_FORMAT "MACHO" CACHE STRING "Executable file format")
+    endif()
 
   endif()
   if(NOT DEFINED CMAKE_EXECUTABLE_FORMAT)

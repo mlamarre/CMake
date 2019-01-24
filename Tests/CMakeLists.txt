@@ -64,7 +64,7 @@ if(BUILD_TESTING)
   set(CMake_TEST_DEVENV "")
   if(CMAKE_VS_DEVENV_COMMAND)
     set(CMake_TEST_DEVENV "${CMAKE_VS_DEVENV_COMMAND}")
-  elseif(CMAKE_GENERATOR MATCHES "Visual Studio [89] " AND
+  elseif(CMAKE_GENERATOR MATCHES "Visual Studio 9 " AND
       NOT CMAKE_MAKE_PROGRAM MATCHES "[mM][sS][bB][uU][iI][lL][dD]\\.[eE][xX][eE]")
     set(CMake_TEST_DEVENV "${CMAKE_MAKE_PROGRAM}")
   endif()
@@ -145,14 +145,65 @@ if(BUILD_TESTING)
     set(CPACK_BINARY_RPM OFF)
   endif()
 
-  # Look for rpmbuild to use for tests.
-  # The tool does not work with spaces in the path.
+  # Look for dpkg to use for tests.
   find_program(DPKG_EXECUTABLE NAMES dpkg)
 
   if(DPKG_EXECUTABLE)
     set(CPACK_BINARY_DEB ON)
   else()
     set(CPACK_BINARY_DEB OFF)
+  endif()
+
+  # Look for NuGet to use for tests.
+  find_program(NUGET_EXECUTABLE NAMES NuGet nuget)
+
+  if(NUGET_EXECUTABLE)
+    set(CPACK_BINARY_NUGET ON)
+  else()
+    set(CPACK_BINARY_NUGET OFF)
+  endif()
+
+  if(WIN32)
+    # Macro to search for available Windows CE SDKs in the windows Registry
+    macro(select_wince_sdk selected_reg selected_sdk)
+      if(CMAKE_HOST_WIN32)
+        execute_process(COMMAND reg QUERY "HKEY_LOCAL_MACHINE\\SOFTWARE\\Wow6432Node\\Microsoft\\Windows CE Tools\\SDKs"
+                    OUTPUT_VARIABLE sdk_reg
+                    ERROR_VARIABLE my_err)
+        string(REGEX REPLACE "HKEY_LOCAL_MACHINE\\\\SOFTWARE\\\\Wow6432Node\\\\Microsoft\\\\Windows CE Tools\\\\SDKs\\\\"  ";" sdk_list "${sdk_reg}")
+        list(LENGTH sdk_list sdk_list_len)
+        if (${sdk_list_len} GREATER 1)
+          list(GET sdk_list 1 _sdk) # The first entry is always empty due to the regex replace above
+          string(STRIP ${_sdk} _sdk) # Make sure there is no newline in the SDK name
+        endif()
+        # Build a key to be used by get_filename_component that is pointing to the SDK directory
+        set(_reg "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Wow6432Node\\Microsoft\\Windows CE Tools\\SDKs\\${_sdk}]")
+        # Set return values
+        set(${selected_reg} ${_reg})
+        set(${selected_sdk} ${_sdk})
+      endif(CMAKE_HOST_WIN32)
+    endmacro(select_wince_sdk)
+
+    set(reg_vs10 "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\VisualStudio\\10.0;InstallDir]")
+    set(reg_vs11 "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\VisualStudio\\11.0;InstallDir]")
+    set(reg_vs12 "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\VisualStudio\\12.0;InstallDir]")
+    set(reg_vs14 "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\VisualStudio\\14.0;InstallDir]")
+    set(reg_ws80 "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Microsoft SDKs\\Windows\\v8.0;InstallationFolder]")
+    set(reg_ws81 "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Microsoft SDKs\\Windows\\v8.1;InstallationFolder]")
+    set(reg_ws10_0 "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\VisualStudio\\14.0\\Setup\\Build Tools for Windows 10;srcPath]")
+    set(reg_wp80 "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Microsoft SDKs\\WindowsPhone\\v8.0;InstallationFolder]")
+    set(reg_wp81 "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Microsoft SDKs\\WindowsPhone\\v8.1;InstallationFolder]")
+    select_wince_sdk(reg_wince wince_sdk)
+    set(reg_tegra "[HKEY_LOCAL_MACHINE\\SOFTWARE\\NVIDIA Corporation\\Nsight Tegra;sdkRoot]")
+    set(reg_nasm "[HKEY_CURRENT_USER\\SOFTWARE\\nasm]")
+    foreach(reg vs10 vs11 vs12 vs14 ws80 ws81 ws10_0 wp80 wp81 wince tegra nasm)
+      get_filename_component(r "${reg_${reg}}" ABSOLUTE)
+      if(IS_DIRECTORY "${r}" AND NOT "${r}" STREQUAL "/registry")
+        set(${reg} 1)
+      else()
+        set(${reg} 0)
+      endif()
+    endforeach()
   endif()
 
   #---------------------------------------------------------------------------
@@ -243,6 +294,10 @@ if(BUILD_TESTING)
       if(_version MATCHES "^Xcode ([0-9]+(\\.[0-9]+)*)")
         set(CMake_TEST_XCODE_VERSION "${CMAKE_MATCH_1}")
       endif()
+    endif()
+    if(NOT CMake_TEST_XCODE_VERSION VERSION_LESS 10)
+      # Since Xcode 10 we do not have two supported architectures for the host.
+      set(CTEST_TEST_OSX_ARCH 0)
     endif()
     if(CMAKE_OSX_SYSROOT)
       execute_process(
@@ -345,9 +400,10 @@ if(BUILD_TESTING)
     endif()
   endif()
 
-  if(${CMAKE_GENERATOR} MATCHES "Visual Studio ([^89]|[89][0-9])")
+  if(${CMAKE_GENERATOR} MATCHES "Visual Studio ([^9]|[9][0-9])")
     ADD_TEST_MACRO(CSharpOnly CSharpOnly)
     ADD_TEST_MACRO(CSharpLinkToCxx CSharpLinkToCxx)
+    ADD_TEST_MACRO(CSharpLinkFromCxx CSharpLinkFromCxx)
   endif()
 
   ADD_TEST_MACRO(COnly COnly)
@@ -355,6 +411,7 @@ if(BUILD_TESTING)
   ADD_TEST_MACRO(CxxSubdirC CxxSubdirC)
   ADD_TEST_MACRO(IPO COnly/COnly)
   ADD_TEST_MACRO(OutDir runtime/OutDir)
+  ADD_TEST_MACRO(OutName exe.OutName.exe)
   ADD_TEST_MACRO(ObjectLibrary UseCshared)
   ADD_TEST_MACRO(NewlineArgs NewlineArgs)
   ADD_TEST_MACRO(SetLang SetLang)
@@ -379,10 +436,14 @@ if(BUILD_TESTING)
   ADD_TEST_MACRO(PolicyScope PolicyScope)
   ADD_TEST_MACRO(EmptyLibrary EmptyLibrary)
   ADD_TEST_MACRO(CompileDefinitions CompileDefinitions)
+  if(CMAKE_Fortran_COMPILER)
+    set(CompileOptions_BUILD_OPTIONS -DTEST_FORTRAN=1)
+  endif()
   ADD_TEST_MACRO(CompileOptions CompileOptions)
   ADD_TEST_MACRO(CompatibleInterface CompatibleInterface)
   ADD_TEST_MACRO(AliasTarget AliasTarget)
   ADD_TEST_MACRO(StagingPrefix StagingPrefix)
+  ADD_TEST_MACRO(ImportedSameName ImportedSameName)
   ADD_TEST_MACRO(InterfaceLibrary InterfaceLibrary)
   if (CMAKE_BUILD_TYPE MATCHES "[Dd][Ee][Bb][Uu][Gg]")
     set(ConfigSources_BUILD_OPTIONS -DCMAKE_BUILD_TYPE=Debug)
@@ -539,7 +600,6 @@ if(BUILD_TESTING)
   else()
     if (CMAKE_CXX_COMPILER_ID MATCHES "PGI"
         OR CMAKE_CXX_COMPILER_ID MATCHES "PathScale"
-        OR CMAKE_SYSTEM_NAME MATCHES "IRIX64"
         OR CMAKE_CXX_COMPILER_ID MATCHES "Intel")
       set(run_pic_test 0)
     else()
@@ -816,6 +876,8 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
 
   ADD_TEST_MACRO(CustomCommandByproducts CustomCommandByproducts)
 
+  ADD_TEST_MACRO(CommandLength CommandLength)
+
   ADD_TEST_MACRO(EmptyDepends ${CMAKE_CTEST_COMMAND})
 
   add_test(CustomCommandWorkingDirectory  ${CMAKE_CTEST_COMMAND}
@@ -853,33 +915,6 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     --build-options ${build_options}
     )
   list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/BuildDepends")
-
-  set(SimpleInstallInstallDir
-    "${CMake_BINARY_DIR}/Tests/SimpleInstall/InstallDirectory")
-  add_test(SimpleInstall ${CMAKE_CTEST_COMMAND}
-    --build-and-test
-    "${CMake_SOURCE_DIR}/Tests/SimpleInstall"
-    "${CMake_BINARY_DIR}/Tests/SimpleInstall"
-    ${build_generator_args}
-    --build-project TestSimpleInstall
-    --build-two-config
-    --build-options ${build_options}
-    "-DCMAKE_INSTALL_PREFIX:PATH=${SimpleInstallInstallDir}"
-    "-DCTEST_TEST_CPACK:BOOL=${CTEST_TEST_CPACK}"
-    --test-command   ${SimpleInstallInstallDir}/MyTest/bin/SimpleInstExe)
-  list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/SimpleInstall")
-  add_test(SimpleInstall-Stage2 ${CMAKE_CTEST_COMMAND}
-    --build-and-test
-    "${CMake_SOURCE_DIR}/Tests/SimpleInstallS2"
-    "${CMake_BINARY_DIR}/Tests/SimpleInstallS2"
-    ${build_generator_args}
-    --build-project TestSimpleInstall
-    --build-two-config
-    --build-options ${build_options}
-    "-DCMAKE_INSTALL_PREFIX:PATH=${SimpleInstallInstallDir}"
-    "-DSTAGE2:BOOL=1"
-    --test-command   ${SimpleInstallInstallDir}/MyTest/bin/SimpleInstExeS2)
-  list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/SimpleInstallS2")
 
   set(MissingInstallInstallDir
     "${CMake_BINARY_DIR}/Tests/MissingInstall/InstallDirectory")
@@ -948,6 +983,44 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     endif()
   endif()
 
+  if(CTEST_TEST_CPACK)
+    add_test(CPackUseDefaultVersion ${CMAKE_CTEST_COMMAND}
+      --build-and-test
+      "${CMake_SOURCE_DIR}/Tests/CPackUseDefaultVersion"
+      "${CMake_BINARY_DIR}/Tests/CPackUseDefaultVersion"
+      ${build_generator_args}
+      --build-project CPackUseDefaultVersion
+      --build-two-config
+      --build-options ${build_options}
+        ${CPackUseDefaultVersion_BUILD_OPTIONS})
+    set_tests_properties(CPackUseDefaultVersion PROPERTIES PASS_REGULAR_EXPRESSION "CPACK_PACKAGE_VERSION=0\\.1\\.1")
+    list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/CPackUseDefaultVersion")
+
+    add_test(CPackUseProjectVersion ${CMAKE_CTEST_COMMAND}
+      --build-and-test
+      "${CMake_SOURCE_DIR}/Tests/CPackUseProjectVersion"
+      "${CMake_BINARY_DIR}/Tests/CPackUseProjectVersion"
+      ${build_generator_args}
+      --build-project CPackUseProjectVersion
+      --build-two-config
+      --build-options ${build_options}
+        ${CPackUseProjectVersion_BUILD_OPTIONS})
+    set_tests_properties(CPackUseProjectVersion PROPERTIES PASS_REGULAR_EXPRESSION "CPACK_PACKAGE_VERSION=1\\.2\\.3")
+    list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/CPackUseProjectVersion")
+
+    add_test(CPackUseShortProjectVersion ${CMAKE_CTEST_COMMAND}
+      --build-and-test
+      "${CMake_SOURCE_DIR}/Tests/CPackUseShortProjectVersion"
+      "${CMake_BINARY_DIR}/Tests/CPackUseShortProjectVersion"
+      ${build_generator_args}
+      --build-project CPackUseShortProjectVersion
+      --build-two-config
+      --build-options ${build_options}
+        ${CPackUseProjectVersion_BUILD_OPTIONS})
+    set_tests_properties(CPackUseShortProjectVersion PROPERTIES PASS_REGULAR_EXPRESSION "CPACK_PACKAGE_VERSION=2")
+    list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/CPackUseShortProjectVersion")
+  endif()
+
   if(CTEST_RUN_CPackComponents)
     set(CPackComponents_BUILD_OPTIONS)
     if(APPLE)
@@ -992,6 +1065,12 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     if(CPACK_BINARY_DEB)
       list(APPEND ACTIVE_CPACK_GENERATORS DEB)
     endif()
+    # Check whether if NuGet command is found
+    # before adding NuGet tests
+    if(CPACK_BINARY_NUGET)
+      list(APPEND ACTIVE_CPACK_GENERATORS NUGET)
+      set(CPACK_GENERATOR_STRING_NUGET NuGet)
+    endif()
 
     # ACTIVE_CPACK_GENERATORS variable
     # now contains the list of 'active generators'
@@ -1011,7 +1090,10 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     list(APPEND CWAYLST "IgnoreGroup")
     list(APPEND CWAYLST "AllInOne")
     foreach(CPackGen IN LISTS ACTIVE_CPACK_GENERATORS)
-      set(CPackRun_CPackGen  "-DCPackGen=${CPackGen}")
+      if(NOT DEFINED CPACK_GENERATOR_STRING_${CPackGen})
+        set(CPACK_GENERATOR_STRING_${CPackGen} ${CPackGen})
+      endif()
+      set(CPackRun_CPackGen  "-DCPackGen=${CPACK_GENERATOR_STRING_${CPackGen}}")
       foreach(CPackComponentWay ${CWAYLST})
         set(CPackRun_CPackComponentWay "-DCPackComponentWay=${CPackComponentWay}")
         add_test(CPackComponentsForAll-${CPackGen}-${CPackComponentWay}
@@ -1022,7 +1104,7 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
           ${build_generator_args}
           --build-project CPackComponentsForAll
           --build-options ${build_options}
-             -DCPACK_GENERATOR:STRING=${CPackGen}
+             -DCPACK_GENERATOR:STRING=${CPACK_GENERATOR_STRING_${CPackGen}}
              -DCPACK_BINARY_${CPackGen}:BOOL=ON
              ${CPackRun_CPackComponentWay}
              ${CPackComponentsForAll_BUILD_OPTIONS}
@@ -1283,18 +1365,18 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/Qt4Targets")
 
     if(Qt5Widgets_FOUND AND NOT Qt5Widgets_VERSION VERSION_LESS 5.1.0)
-      add_test(Qt4And5Automoc ${CMAKE_CTEST_COMMAND}
+      add_test(Qt4And5AutomocForward ${CMAKE_CTEST_COMMAND}
         --build-and-test
         "${CMake_SOURCE_DIR}/Tests/Qt4And5Automoc"
-        "${CMake_BINARY_DIR}/Tests/Qt4And5Automoc"
+        "${CMake_BINARY_DIR}/Tests/Qt4And5AutomocForward"
         ${build_generator_args}
         --build-project Qt4And5Automoc
-        --build-exe-dir "${CMake_BINARY_DIR}/Tests/Qt4And5Automoc"
+        --build-exe-dir "${CMake_BINARY_DIR}/Tests/Qt4And5AutomocForward"
         --force-new-ctest-process
         --build-options ${build_options}
         --test-command ${CMAKE_CTEST_COMMAND} -V
         )
-      list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/Qt4And5Automoc")
+      list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/Qt4And5AutomocForward")
       add_test(Qt4And5AutomocReverse ${CMAKE_CTEST_COMMAND}
         --build-and-test
         "${CMake_SOURCE_DIR}/Tests/Qt4And5Automoc"
@@ -1310,6 +1392,10 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     endif()
   endif()
 
+  if(CMake_TEST_FindALSA)
+    add_subdirectory(FindALSA)
+  endif()
+
   if(CMake_TEST_CUDA)
     add_subdirectory(Cuda)
     add_subdirectory(CudaOnly)
@@ -1323,6 +1409,10 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     add_subdirectory(FindBZip2)
   endif()
 
+  if(CMake_TEST_FindCURL)
+    add_subdirectory(FindCURL)
+  endif()
+
   if(CMake_TEST_FindDoxygen)
     add_subdirectory(FindDoxygen)
   endif()
@@ -1331,8 +1421,24 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     add_subdirectory(FindEXPAT)
   endif()
 
+  if(CMake_TEST_FindFontconfig)
+    add_subdirectory(FindFontconfig)
+  endif()
+
   if(CMake_TEST_FindFreetype)
     add_subdirectory(FindFreetype)
+  endif()
+
+  if(CMake_TEST_FindGDAL)
+    add_subdirectory(FindGDAL)
+  endif()
+
+  if(CMake_TEST_FindGIF)
+    add_subdirectory(FindGIF)
+  endif()
+
+  if(CMake_TEST_FindGit)
+    add_subdirectory(FindGit)
   endif()
 
   if(CMake_TEST_FindGSL)
@@ -1352,20 +1458,44 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     add_subdirectory(FindICU)
   endif()
 
+  if(CMake_TEST_FindJPEG)
+    add_subdirectory(FindJPEG)
+  endif()
+
   if(CMake_TEST_FindJsonCpp)
     add_subdirectory(FindJsonCpp)
+  endif()
+
+  if(CMake_TEST_FindLibLZMA)
+    add_subdirectory(FindLibLZMA)
   endif()
 
   if(CMake_TEST_FindLibRHash)
     add_subdirectory(FindLibRHash)
   endif()
 
+  if(CMake_TEST_FindLibinput)
+    add_subdirectory(FindLibinput)
+  endif()
+
   if(CMake_TEST_FindLibUV)
     add_subdirectory(FindLibUV)
   endif()
 
+  if(CMake_TEST_FindLibXml2)
+    add_subdirectory(FindLibXml2)
+  endif()
+
   if(CMake_TEST_FindLTTngUST)
     add_subdirectory(FindLTTngUST)
+  endif()
+
+  if(CMake_TEST_FindODBC)
+    add_subdirectory(FindODBC)
+  endif()
+
+  if(CMake_TEST_FindOctave)
+    add_subdirectory(FindOctave)
   endif()
 
   if(CMake_TEST_FindOpenCL)
@@ -1396,8 +1526,16 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     add_subdirectory(FindPatch)
   endif()
 
+  if(CMake_TEST_FindPostgreSQL)
+    add_subdirectory(FindPostgreSQL)
+  endif()
+
   if(CMake_TEST_FindProtobuf)
     add_subdirectory(FindProtobuf)
+  endif()
+
+  if(CMake_TEST_FindSQLite3)
+    add_subdirectory(FindSQLite3)
   endif()
 
   if(CMake_TEST_FindTIFF)
@@ -1408,6 +1546,10 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     add_subdirectory(FindVulkan)
   endif()
 
+  if(CMake_TEST_FindX11)
+    add_subdirectory(FindX11)
+  endif()
+
   if(CMake_TEST_FindXalanC)
     add_subdirectory(FindXalanC)
   endif()
@@ -1416,13 +1558,43 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     add_subdirectory(FindXercesC)
   endif()
 
+  if(CMake_TEST_FindPython)
+    add_subdirectory(FindPython)
+  endif()
+
+  if(CMake_TEST_UseSWIG)
+    add_subdirectory(UseSWIG)
+  endif()
+
   add_subdirectory(FindThreads)
 
   # Matlab module
-  if(CMake_TEST_FindMatlab)
+  # CMake_TEST_FindMatlab: indicates to look for Matlab (from PATH for Linux)
+  # CMake_TEST_FindMatlab_ROOT_DIR: indicates an optional root directory for Matlab, allows to select a version.
+  # CMake_TEST_FindMatlab_MCR: indicates the MCR is installed
+  # CMake_TEST_FindMatlab_MCR_ROOT_DIR: indicates an optional root directory for the MCR, required on Linux
+  if(CMake_TEST_FindMatlab OR (NOT "${CMake_TEST_FindMatlab_ROOT_DIR}" STREQUAL "") OR
+     CMake_TEST_FindMatlab_MCR OR (NOT "${CMake_TEST_FindMatlab_MCR_ROOT_DIR}" STREQUAL ""))
+    set(FindMatlab_additional_test_options )
+    if(CMake_TEST_FindMatlab_MCR OR NOT "${CMake_TEST_FindMatlab_MCR_ROOT_DIR}" STREQUAL "")
+      set(FindMatlab_additional_test_options -DIS_MCR=TRUE)
+    endif()
+    if(NOT "${CMake_TEST_FindMatlab_ROOT_DIR}" STREQUAL "")
+      set(FindMatlab_additional_test_options ${FindMatlab_additional_test_options} "-DMatlab_ROOT_DIR=${CMake_TEST_FindMatlab_ROOT_DIR}")
+    endif()
+    if(NOT "${CMake_TEST_FindMatlab_MCR_ROOT_DIR}" STREQUAL "")
+      set(FindMatlab_additional_test_options ${FindMatlab_additional_test_options} "-DMCR_ROOT:FILEPATH=${CMake_TEST_FindMatlab_MCR_ROOT_DIR}")
+    endif()
+    set(FindMatlab.basic_checks_BUILD_OPTIONS ${FindMatlab_additional_test_options})
     ADD_TEST_MACRO(FindMatlab.basic_checks      ${CMAKE_CTEST_COMMAND} -V -C $<CONFIGURATION>)
+    set(FindMatlab.versions_checks_BUILD_OPTIONS ${FindMatlab_additional_test_options})
     ADD_TEST_MACRO(FindMatlab.versions_checks   ${CMAKE_CTEST_COMMAND} -V -C $<CONFIGURATION>)
+    set(FindMatlab.components_checks_BUILD_OPTIONS ${FindMatlab_additional_test_options})
     ADD_TEST_MACRO(FindMatlab.components_checks ${CMAKE_CTEST_COMMAND} -V -C $<CONFIGURATION>)
+    set(FindMatlab.failure_reports_BUILD_OPTIONS ${FindMatlab_additional_test_options})
+    ADD_TEST_MACRO(FindMatlab.failure_reports   ${CMAKE_CTEST_COMMAND} -V -C $<CONFIGURATION>)
+    set(FindMatlab.r2018a_check_BUILD_OPTIONS ${FindMatlab_additional_test_options})
+    ADD_TEST_MACRO(FindMatlab.r2018a_check   ${CMAKE_CTEST_COMMAND} -V -C $<CONFIGURATION>)
   endif()
 
   find_package(GTK2 QUIET)
@@ -1443,6 +1615,7 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     )
   list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/ExternalProject")
   set_tests_properties(ExternalProject PROPERTIES
+    RUN_SERIAL 1
     TIMEOUT ${CMAKE_LONG_TEST_TIMEOUT})
 
   add_test(NAME ExternalProjectSubdir
@@ -1469,6 +1642,18 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     )
   list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/ExternalProjectSourceSubdir")
 
+  add_test(NAME ExternalProjectSourceSubdirNotCMake
+    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIGURATION>
+    --build-and-test
+    "${CMake_SOURCE_DIR}/Tests/ExternalProjectSourceSubdirNotCMake"
+    "${CMake_BINARY_DIR}/Tests/ExternalProjectSourceSubdirNotCMake"
+    ${build_generator_args}
+    --build-project ExternalProjectSourceSubdirNotCMake
+    --force-new-ctest-process
+    --build-options ${build_options}
+    )
+  list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/ExternalProjectSourceSubdirNotCMake")
+
   add_test(ExternalProjectLocal ${CMAKE_CTEST_COMMAND}
     --build-and-test
     "${CMake_SOURCE_DIR}/Tests/ExternalProjectLocal"
@@ -1482,6 +1667,7 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     )
   list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/ExternalProjectLocal")
   set_tests_properties(ExternalProjectLocal PROPERTIES
+    RUN_SERIAL 1
     TIMEOUT ${CMAKE_LONG_TEST_TIMEOUT})
 
   add_test(ExternalProjectUpdateSetup ${CMAKE_CTEST_COMMAND}
@@ -1497,6 +1683,7 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     )
   list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/ExternalProjectUpdate")
   set_tests_properties(ExternalProjectUpdateSetup PROPERTIES
+    RUN_SERIAL 1
     TIMEOUT ${CMAKE_LONG_TEST_TIMEOUT})
 
   add_test(NAME ExternalProjectUpdate
@@ -1511,6 +1698,7 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     )
   list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/ExternalProjectUpdate")
   set_tests_properties(ExternalProjectUpdate PROPERTIES
+    RUN_SERIAL 1
     TIMEOUT ${CMAKE_LONG_TEST_TIMEOUT}
     WORKING_DIRECTORY ${CMake_SOURCE_DIR}/Tests/ExternalProjectUpdate
     DEPENDS ExternalProjectUpdateSetup )
@@ -1712,7 +1900,6 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
   set_tests_properties ( testdriver2 PROPERTIES DEPENDS testdriver1)
   set_tests_properties ( testdriver3 PROPERTIES DEPENDS testdriver2)
   set_tests_properties ( linkorder2 PROPERTIES DEPENDS linkorder1)
-  set_tests_properties ( SimpleInstall-Stage2 PROPERTIES DEPENDS SimpleInstall)
 
   # Test static linking on toolchains known to support it.
   if(CMAKE_C_COMPILER_ID STREQUAL "GNU"
@@ -1831,6 +2018,10 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
           message(STATUS
             ".vcproj file association indicates VCExpress, avoiding MFC test")
           set(CTEST_RUN_MFC OFF)
+        elseif( NOT ov )
+          message(STATUS
+            ".vcproj has no file association, avoiding MFC test")
+          set(CTEST_RUN_MFC OFF)
         endif()
       endif()
 
@@ -1910,7 +2101,7 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
   endif()
 
   if(MSVC AND NOT MSVC_VERSION LESS 1310
-     AND (NOT CMAKE_GENERATOR MATCHES "Visual Studio [89]( |$)"
+     AND (NOT CMAKE_GENERATOR MATCHES "Visual Studio 9 "
           OR CMAKE_SIZEOF_VOID_P EQUAL 4)
       )
     ADD_TEST_MACRO(VSMASM VSMASM)
@@ -1921,7 +2112,7 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
       ADD_TEST_MACRO(SBCS SBCS)
     endif()
 
-    if(NOT "${CMAKE_GENERATOR}" MATCHES "Visual Studio [89]( |$)"
+    if(NOT "${CMAKE_GENERATOR}" MATCHES "Visual Studio 9 "
         AND NOT CMAKE_GENERATOR_TOOLSET)
       ADD_TEST_MACRO(VSWindowsFormsResx VSWindowsFormsResx)
     endif()
@@ -1995,58 +2186,15 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     endif()
   endif()
 
-  if(WIN32)
-    # Macro to search for available Windows CE SDKs in the windows Registry
-    macro(select_wince_sdk selected_reg selected_sdk)
-      if(CMAKE_HOST_WIN32)
-        execute_process(COMMAND reg QUERY "HKEY_LOCAL_MACHINE\\SOFTWARE\\Wow6432Node\\Microsoft\\Windows CE Tools\\SDKs"
-                    OUTPUT_VARIABLE sdk_reg
-                    ERROR_VARIABLE my_err)
-        string(REGEX REPLACE "HKEY_LOCAL_MACHINE\\\\SOFTWARE\\\\Wow6432Node\\\\Microsoft\\\\Windows CE Tools\\\\SDKs\\\\"  ";" sdk_list "${sdk_reg}")
-        list(LENGTH sdk_list sdk_list_len)
-        if (${sdk_list_len} GREATER 1)
-          list(GET sdk_list 1 _sdk) # The first entry is always empty due to the regex replace above
-          string(STRIP ${_sdk} _sdk) # Make sure there is no newline in the SDK name
-        endif()
-        # Build a key to be used by get_filename_component that is pointing to the SDK directory
-        set(_reg "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Wow6432Node\\Microsoft\\Windows CE Tools\\SDKs\\${_sdk}]")
-
-        # Set return values
-        set(${selected_reg} ${_reg})
-        set(${selected_sdk} ${_sdk})
-      endif(CMAKE_HOST_WIN32)
-    endmacro(select_wince_sdk)
-
-    set(reg_vs10 "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\VisualStudio\\10.0;InstallDir]")
-    set(reg_vs11 "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\VisualStudio\\11.0;InstallDir]")
-    set(reg_vs12 "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\VisualStudio\\12.0;InstallDir]")
-    set(reg_vs14 "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots;KitsRoot10]")
-    set(reg_ws80 "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Microsoft SDKs\\Windows\\v8.0;InstallationFolder]")
-    set(reg_ws81 "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Microsoft SDKs\\Windows\\v8.1;InstallationFolder]")
-    set(reg_ws10_0 "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\VisualStudio\\14.0\\Setup\\Build Tools for Windows 10;srcPath]")
-    set(reg_wp80 "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Microsoft SDKs\\WindowsPhone\\v8.0;InstallationFolder]")
-    set(reg_wp81 "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Microsoft SDKs\\WindowsPhone\\v8.1;InstallationFolder]")
-    select_wince_sdk(reg_wince wince_sdk)
-    set(reg_tegra "[HKEY_LOCAL_MACHINE\\SOFTWARE\\NVIDIA Corporation\\Nsight Tegra;sdkRoot]")
-    set(reg_nasm "[HKEY_CURRENT_USER\\SOFTWARE\\nasm]")
-    foreach(reg vs10 vs11 vs12 vs14 ws80 ws81 ws10_0 wp80 wp81 wince tegra nasm)
-      get_filename_component(r "${reg_${reg}}" ABSOLUTE)
-      if(IS_DIRECTORY "${r}" AND NOT "${r}" STREQUAL "/registry")
-        set(${reg} 1)
-      else()
-        set(${reg} 0)
-      endif()
-    endforeach()
-  endif()
-
   get_filename_component(ntver "[HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion;CurrentVersion]" NAME)
   if(WIN32 AND ntver VERSION_GREATER 6.1) # Windows >= 8.0
-    macro(add_test_VSWinStorePhone name generator systemName systemVersion)
+    macro(add_test_VSWinStorePhone name generator systemName systemVersion architecture)
       add_test(NAME VSWinStorePhone.${name} COMMAND ${CMAKE_CTEST_COMMAND}
         --build-and-test
         "${CMake_SOURCE_DIR}/Tests/VSWinStorePhone"
         "${CMake_BINARY_DIR}/Tests/VSWinStorePhone/${name}"
         --build-generator "${generator}"
+        --build-generator-platform "${architecture}"
         --build-project VSWinStorePhone
         --build-config $<CONFIGURATION>
         --build-options -DCMAKE_SYSTEM_NAME=${systemName}
@@ -2056,14 +2204,14 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     endmacro()
 
     if(vs11 AND ws80)
-      add_test_VSWinStorePhone(vs11-store80-X86 "Visual Studio 11 2012" WindowsStore 8.0)
-      add_test_VSWinStorePhone(vs11-store80-ARM "Visual Studio 11 2012 ARM" WindowsStore 8.0)
-      add_test_VSWinStorePhone(vs11-store80-X64 "Visual Studio 11 2012 Win64" WindowsStore 8.0)
+      add_test_VSWinStorePhone(vs11-store80-X86 "Visual Studio 11 2012" WindowsStore 8.0 Win32)
+      add_test_VSWinStorePhone(vs11-store80-ARM "Visual Studio 11 2012" WindowsStore 8.0 ARM)
+      add_test_VSWinStorePhone(vs11-store80-X64 "Visual Studio 11 2012" WindowsStore 8.0 x64)
     endif()
     if(vs12 AND ws81)
-      add_test_VSWinStorePhone(vs12-store81-X86 "Visual Studio 12 2013" WindowsStore 8.1)
-      add_test_VSWinStorePhone(vs12-store81-ARM "Visual Studio 12 2013 ARM" WindowsStore 8.1)
-      add_test_VSWinStorePhone(vs12-store81-X64 "Visual Studio 12 2013 Win64" WindowsStore 8.1)
+      add_test_VSWinStorePhone(vs12-store81-X86 "Visual Studio 12 2013" WindowsStore 8.1 Win32)
+      add_test_VSWinStorePhone(vs12-store81-ARM "Visual Studio 12 2013" WindowsStore 8.1 ARM)
+      add_test_VSWinStorePhone(vs12-store81-X64 "Visual Studio 12 2013" WindowsStore 8.1 x64)
 
       add_test(NAME VSXaml COMMAND ${CMAKE_CTEST_COMMAND}
         --build-and-test
@@ -2076,18 +2224,24 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
                           -DCMAKE_SYSTEM_VERSION=8.1
         )
     endif()
+    if(CMake_TEST_VSWinStorePhone_VS_2017 AND ws10_0)
+      add_test_VSWinStorePhone(vs15-store10_0-X86 "Visual Studio 15 2017" WindowsStore 10.0 Win32)
+      add_test_VSWinStorePhone(vs15-store10_0-ARM "Visual Studio 15 2017" WindowsStore 10.0 ARM)
+      add_test_VSWinStorePhone(vs15-store10_0-X64 "Visual Studio 15 2017" WindowsStore 10.0 x64)
+      add_test_VSWinStorePhone(vs15-store10_0-ARM64 "Visual Studio 15 2017" WindowsStore 10.0 ARM64)
+    endif()
     if(vs14 AND ws10_0)
-      add_test_VSWinStorePhone(vs14-store10_0-X86 "Visual Studio 14 2015" WindowsStore 10.0)
-      add_test_VSWinStorePhone(vs14-store10_0-ARM "Visual Studio 14 2015 ARM" WindowsStore 10.0)
-      add_test_VSWinStorePhone(vs14-store10_0-X64 "Visual Studio 14 2015 Win64" WindowsStore 10.0)
+      add_test_VSWinStorePhone(vs14-store10_0-X86 "Visual Studio 14 2015" WindowsStore 10.0 Win32)
+      add_test_VSWinStorePhone(vs14-store10_0-ARM "Visual Studio 14 2015" WindowsStore 10.0 ARM)
+      add_test_VSWinStorePhone(vs14-store10_0-X64 "Visual Studio 14 2015" WindowsStore 10.0 x64)
     endif()
     if(vs11 AND wp80)
-      add_test_VSWinStorePhone(vs11-phone80-X86 "Visual Studio 11 2012" WindowsPhone 8.0)
-      add_test_VSWinStorePhone(vs11-phone80-ARM "Visual Studio 11 2012 ARM" WindowsPhone 8.0)
+      add_test_VSWinStorePhone(vs11-phone80-X86 "Visual Studio 11 2012" WindowsPhone 8.0 Win32)
+      add_test_VSWinStorePhone(vs11-phone80-ARM "Visual Studio 11 2012" WindowsPhone 8.0 ARM)
     endif()
     if(vs12 AND wp81)
-      add_test_VSWinStorePhone(vs12-phone81-X86 "Visual Studio 12 2013" WindowsPhone 8.1)
-      add_test_VSWinStorePhone(vs12-phone81-ARM "Visual Studio 12 2013 ARM" WindowsPhone 8.1)
+      add_test_VSWinStorePhone(vs12-phone81-X86 "Visual Studio 12 2013" WindowsPhone 8.1 Win32)
+      add_test_VSWinStorePhone(vs12-phone81-ARM "Visual Studio 12 2013" WindowsPhone 8.1 ARM)
     endif()
   endif()
 
@@ -2120,37 +2274,109 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     endif()
   endif()
 
-  if(CMAKE_GENERATOR MATCHES "Visual Studio ([^89]|[89][0-9])" AND nasm)
+  if(CMAKE_GENERATOR MATCHES "Visual Studio ([^9]|9[0-9])" AND nasm)
     ADD_TEST_MACRO(VSNASM VSNASM)
   endif()
 
   if (CMake_TEST_GreenHillsMULTI)
-    macro(add_test_GhsMulti name primaryTarget bspName)
-      add_test(NAME GhsMulti.${name} COMMAND ${CMAKE_CTEST_COMMAND}
-        --build-and-test
-        "${CMake_SOURCE_DIR}/Tests/GhsMulti"
-        "${CMake_BINARY_DIR}/Tests/GhsMulti/${name}"
-        --build-generator "Green Hills MULTI"
-        --build-project ReturnNum
-        --build-config $<CONFIGURATION>
-        --build-options -DGHS_PRIMARY_TARGET=${primaryTarget}
-        -DGHS_BSP_NAME=${bspName}
-        )
-    endmacro ()
-    add_test_GhsMulti("arm_integrity_simarm" "arm_integrity.tgt" "simarm")
-    add_test_GhsMulti("arm64_integrity_simarm" "arm64_integrity.tgt" "simarm")
-    add_test(NAME GhsMulti.duplicate_source_filenames
+    macro(add_test_GhsMulti test_name test_dir bin_sub_dir build_opts)
+      separate_arguments(_ghs_build_opts UNIX_COMMAND ${build_opts})
+      separate_arguments(_ghs_toolset_extra UNIX_COMMAND ${ghs_toolset_extra})
+      if(${ARGC} GREATER 4)
+        set(_ghs_test_command --test-command ${ARGN})
+      endif()
+      if(ghs_config_name STREQUAL "__default__")
+        set(_ghs_test_name "${test_name}")
+      else()
+        set(_ghs_test_name "${ghs_config_name}.${test_name}")
+      endif()
+      add_test(NAME GhsMulti.${_ghs_test_name}
         COMMAND ${CMAKE_CTEST_COMMAND}
         --build-and-test
-        "${CMake_SOURCE_DIR}/Tests/GhsMultiDuplicateSourceFilenames"
-        "${CMake_BINARY_DIR}/Tests/GhsMultiDuplicateSourceFilenames"
+        "${CMake_SOURCE_DIR}/Tests/GhsMulti/${test_dir}"
+        "${CMake_BINARY_DIR}/Tests/GhsMulti/${ghs_config_name}/${test_dir}/${bin_sub_dir}"
         --build-generator "Green Hills MULTI"
-        --build-project ReturnNum
+        --build-project test
         --build-config $<CONFIGURATION>
-        --build-options -DGHS_PRIMARY_TARGET="arm_integrity.tgt"
-        -DGHS_BSP_NAME="simarm"
+        --build-options ${ghs_target_arch} ${ghs_toolset_name} ${ghs_toolset_root} ${ghs_target_platform}
+          ${ghs_os_root} ${ghs_os_dir} ${ghs_bsp_name} ${_ghs_build_opts} ${_ghs_toolset_extra}
+          ${_ghs_test_command}
         )
-  endif ()
+        unset(_ghs_build_opts)
+        unset(_ghs_toolset_extra)
+        unset(_ghs_test_command)
+        unset(_ghs_test_name)
+    endmacro()
+    macro(add_test_GhsMulti_rename_install test_name)
+      add_test_GhsMulti( ${test_name} GhsMultiRenameInstall ${test_name}
+        "-DCMAKE_INSTALL_PREFIX=. -DRUN_TEST=${test_name}" ${CMAKE_CMAKE_COMMAND} -P ./cmake_install.cmake)
+    endmacro()
+    #unset ghs config variables
+    unset(ghs_config_name)
+    unset(ghs_target_arch)
+    unset(ghs_toolset_root)
+    unset(ghs_toolset_name)
+    unset(ghs_os_root)
+    unset(ghs_os_dir)
+    unset(ghs_target_platform)
+    unset(ghs_bsp_name)
+    unset(ghs_toolset_extra)
+    if(NOT CMake_TEST_GreenHillsMULTI_config)
+      #if list of config settings not defined then just run once as default
+      set(CMake_TEST_GreenHillsMULTI_config "__default__")
+    endif()
+    foreach(ghs_file IN LISTS CMake_TEST_GreenHillsMULTI_config)
+      # source GHS tools config file
+      if(NOT ghs_file STREQUAL "__default__")
+        if(IS_ABSOLUTE ${ghs_file})
+          include(${ghs_file})
+        else()
+          include(${CMAKE_BINARY_DIR}/${ghs_file})
+        endif()
+      endif()
+      if(NOT ghs_config_name)
+        set(ghs_config_name "__default__")
+      endif()
+      # test integrity build
+      if (NOT ghs_skip_integrity AND (NOT ghs_target_platform OR ghs_target_platform MATCHES "integrity"))
+        add_test_GhsMulti(integrityDDInt GhsMultiIntegrity/GhsMultiIntegrityDDInt "" "")
+        add_test_GhsMulti(integrityMonolith GhsMultiIntegrity/GhsMultiIntegrityMonolith "" "")
+        add_test_GhsMulti(integrityDD GhsMultiIntegrity/GhsMultiIntegrityDD "" "")
+      endif()
+      add_test_GhsMulti(duplicate_source_filenames GhsMultiDuplicateSourceFilenames "" "")
+      add_test_GhsMulti_rename_install(SINGLE_EXEC)
+      add_test_GhsMulti_rename_install(SINGLE_EXEC_RENAMED)
+      add_test_GhsMulti_rename_install(EXEC_AND_LIB)
+      add_test_GhsMulti(multiple_source_groups GhsMultiSrcGroups Default "")
+      add_test_GhsMulti(multiple_source_groups_folders GhsMultiSrcGroups PropFolders "-DTEST_PROP=ON")
+      add_test_GhsMulti(multiple_source_groups_all_folders GhsMultiSrcGroups AllFolders "-DGHS_NO_SOURCE_GROUP_FILE=ON")
+      add_test_GhsMulti(unsupported_targets GhsMultiUnsupportedTargets "" "")
+      add_test_GhsMulti(object_library GhsMultiObjectLibrary "" "")
+      add_test_GhsMulti(exclude GhsMultiExclude "" ""
+        ${CMAKE_CMAKE_COMMAND} -P ${CMake_SOURCE_DIR}/Tests/GhsMulti/GhsMultiExclude/verify.cmake)
+      add_test_GhsMulti(interface GhsMultiInterface "" "")
+      add_test_GhsMulti(transitive_link_test GhsMultiLinkTest TransitiveLink "-DRUN_TEST=NO_FLAGS")
+      add_test_GhsMulti(flags_link_test GhsMultiLinkTest FlagsCheck "-DRUN_TEST=CHECK_FLAGS")
+      add_test_GhsMulti(sub_link_test GhsMultiLinkTestSub "" "")
+      add_test_GhsMulti(multiple_projects GhsMultiMultipleProjects "" ""
+        ${CMAKE_CMAKE_COMMAND} -P ${CMake_SOURCE_DIR}/Tests/GhsMulti/GhsMultiMultipleProjects/verify.cmake)
+      add_test_GhsMulti(compiler_options_none GhsMultiCompilerOptions None "-DRUN_TEST=RELEASE_FLAGS -DRUN_TEST_BUILD_TYPE=\"\"")
+      add_test_GhsMulti(compiler_options_kernel GhsMultiCompilerOptions Kernel "-DRUN_TEST=KERNEL_FLAGS -DRUN_TEST_BUILD_TYPE=DEBUG")
+      add_test_GhsMulti(try_compile_copy GhsMultiCopyFile "" "")
+      add_test_GhsMulti(ghs_platform GhsMultiPlatform "" "")
+      list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/GhsMulti/${ghs_config_name}")
+      #unset ghs config variables
+      unset(ghs_config_name)
+      unset(ghs_target_arch)
+      unset(ghs_toolset_root)
+      unset(ghs_toolset_name)
+      unset(ghs_os_root)
+      unset(ghs_os_dir)
+      unset(ghs_target_platform)
+      unset(ghs_bsp_name)
+      unset(ghs_toolset_extra)
+    endforeach()
+  endif()
 
   if(tegra AND NOT "${CMake_SOURCE_DIR};${CMake_BINARY_DIR}" MATCHES " ")
     macro(add_test_VSNsightTegra name generator)
@@ -2571,7 +2797,7 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     $<TARGET_FILE:ctest> -T Coverage --debug)
   set_tests_properties(CTestGTMCoverage PROPERTIES
       PASS_REGULAR_EXPRESSION
-      "Process file.*ZZCOVTST.m.*Total LOC:.*30.*Percentage Coverage: 80.00*"
+      "Process file.*ZZCOVTST.m.*Total LOC:.*32.*Percentage Coverage: 81.25*"
       ENVIRONMENT COVFILE=)
 
   configure_file(
@@ -2589,7 +2815,7 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     $<TARGET_FILE:ctest> -T Coverage --debug)
   set_tests_properties(CTestCacheCoverage PROPERTIES
       PASS_REGULAR_EXPRESSION
-      "Process file.*ZZCOVTST.m.*Total LOC:.*29.*Percentage Coverage: 86.21.*"
+      "Process file.*ZZCOVTST.m.*Total LOC:.*32.*Percentage Coverage: 87.50.*"
       ENVIRONMENT COVFILE=)
 
   # Adding a test case for Python Coverage
@@ -2728,11 +2954,18 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
     --output-log "${CMake_BINARY_DIR}/Tests/CTestConfig/ScriptWithArgs.log"
     )
 
+  ADD_TEST_MACRO(CMakeCommands.add_compile_definitions add_compile_definitions)
   ADD_TEST_MACRO(CMakeCommands.add_compile_options add_compile_options)
   ADD_TEST_MACRO(CMakeCommands.target_link_libraries target_link_libraries)
   ADD_TEST_MACRO(CMakeCommands.target_include_directories target_include_directories)
   ADD_TEST_MACRO(CMakeCommands.target_compile_definitions target_compile_definitions)
   ADD_TEST_MACRO(CMakeCommands.target_compile_options target_compile_options)
+  ADD_TEST_MACRO(CMakeCommands.target_sources target_sources)
+
+  ADD_TEST_MACRO(CMakeCommands.add_link_options)
+  ADD_TEST_MACRO(CMakeCommands.target_link_options)
+  ADD_TEST_MACRO(CMakeCommands.link_directories)
+  ADD_TEST_MACRO(CMakeCommands.target_link_directories)
 
   # The cmake server-mode test requires python for a simple client.
   find_package(PythonInterp QUIET)
@@ -3326,10 +3559,6 @@ ${CMake_BINARY_DIR}/bin/cmake -DDIR=dev -P ${CMake_SOURCE_DIR}/Utilities/Release
       COMMENT "Removing test build directories."
       )
   endif()
-
-  add_test(NAME CMakeWizardTest COMMAND cmake -i)
-  set_property(TEST CMakeWizardTest PROPERTY PASS_REGULAR_EXPRESSION
-    "The \"cmake -i\" wizard mode is no longer supported.")
 
   # Define a set of "contract" tests, each activated by a cache entry
   # named "CMake_TEST_CONTRACT_<project>".  For each Contract test,

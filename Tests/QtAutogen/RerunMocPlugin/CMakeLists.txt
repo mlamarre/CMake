@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(RerunMocPlugin)
-include("../AutogenTest.cmake")
+include("../AutogenCoreTest.cmake")
 
 # Tests Q_PLUGIN_METADATA and CMAKE_AUTOMOC_DEPEND_FILTERS
 # json file change detection
@@ -19,6 +19,7 @@ try_compile(MOC_PLUGIN
   "${mocPlugSrcDir}"
   MocPlugin
   CMAKE_FLAGS "-DQT_TEST_VERSION=${QT_TEST_VERSION}"
+              "-DCMAKE_AUTOGEN_VERBOSE=${CMAKE_AUTOGEN_VERBOSE}"
               "-DQT_QMAKE_EXECUTABLE:FILEPATH=${QT_QMAKE_EXECUTABLE}"
   OUTPUT_VARIABLE output
 )

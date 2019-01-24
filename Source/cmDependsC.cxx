@@ -20,12 +20,11 @@
 #define INCLUDE_REGEX_TRANSFORM_MARKER "#IncludeRegexTransform: "
 
 cmDependsC::cmDependsC()
-  : ValidDeps(nullptr)
 {
 }
 
 cmDependsC::cmDependsC(
-  cmLocalGenerator* lg, const char* targetDir, const std::string& lang,
+  cmLocalGenerator* lg, const std::string& targetDir, const std::string& lang,
   const std::map<std::string, DependencyVector>* validDeps)
   : cmDepends(lg, targetDir)
   , ValidDeps(validDeps)
@@ -54,8 +53,8 @@ cmDependsC::cmDependsC(
   }
 
   this->IncludeRegexLine.compile(INCLUDE_REGEX_LINE);
-  this->IncludeRegexScan.compile(scanRegex.c_str());
-  this->IncludeRegexComplain.compile(complainRegex.c_str());
+  this->IncludeRegexScan.compile(scanRegex);
+  this->IncludeRegexComplain.compile(complainRegex);
   this->IncludeRegexLineString = INCLUDE_REGEX_LINE_MARKER INCLUDE_REGEX_LINE;
   this->IncludeRegexScanString = INCLUDE_REGEX_SCAN_MARKER;
   this->IncludeRegexScanString += scanRegex;
@@ -96,9 +95,16 @@ bool cmDependsC::WriteDependencies(const std::set<std::string>& sources,
   std::set<std::string> dependencies;
   bool haveDeps = false;
 
+  std::string binDir = this->LocalGenerator->GetBinaryDirectory();
+
+  // Compute a path to the object file to write to the internal depend file.
+  // Any existing content of the internal depend file has already been
+  // loaded in ValidDeps with this path as a key.
+  std::string obj_i = this->LocalGenerator->ConvertToRelativePath(binDir, obj);
+
   if (this->ValidDeps != nullptr) {
     std::map<std::string, DependencyVector>::const_iterator tmpIt =
-      this->ValidDeps->find(obj);
+      this->ValidDeps->find(obj_i);
     if (tmpIt != this->ValidDeps->end()) {
       dependencies.insert(tmpIt->second.begin(), tmpIt->second.end());
       haveDeps = true;
@@ -167,7 +173,7 @@ bool cmDependsC::WriteDependencies(const std::set<std::string>& sources,
       // Complain if the file cannot be found and matches the complain
       // regex.
       if (fullName.empty() &&
-          this->IncludeRegexComplain.find(current.FileName.c_str())) {
+          this->IncludeRegexComplain.find(current.FileName)) {
         cmSystemTools::Error("Cannot find file \"", current.FileName.c_str(),
                              "\".");
         return false;
@@ -206,7 +212,7 @@ bool cmDependsC::WriteDependencies(const std::set<std::string>& sources,
               // Scan this file for new dependencies.  Pass the directory
               // containing the file to handle double-quote includes.
               std::string dir = cmSystemTools::GetFilenamePath(fullName);
-              this->Scan(fin, dir.c_str(), fullName);
+              this->Scan(fin, dir, fullName);
             } else {
               // Skip file with encoding we do not implement.
             }
@@ -222,8 +228,6 @@ bool cmDependsC::WriteDependencies(const std::set<std::string>& sources,
   // written by the original local generator for this directory
   // convert the dependencies to paths relative to the home output
   // directory.  We must do the same here.
-  std::string binDir = this->LocalGenerator->GetBinaryDirectory();
-  std::string obj_i = this->LocalGenerator->ConvertToRelativePath(binDir, obj);
   std::string obj_m = cmSystemTools::ConvertToOutputPath(obj_i);
   internalDepends << obj_i << std::endl;
 
@@ -338,7 +342,7 @@ void cmDependsC::WriteCacheFile() const
   }
 }
 
-void cmDependsC::Scan(std::istream& is, const char* directory,
+void cmDependsC::Scan(std::istream& is, const std::string& directory,
                       const std::string& fullName)
 {
   cmIncludeLines* newCacheEntry = new cmIncludeLines;
@@ -354,7 +358,7 @@ void cmDependsC::Scan(std::istream& is, const char* directory,
     }
 
     // Match include directives.
-    if (this->IncludeRegexLine.find(line.c_str())) {
+    if (this->IncludeRegexLine.find(line)) {
       // Get the file being included.
       UnscannedEntry entry;
       entry.FileName = this->IncludeRegexLine.match(2);
@@ -378,7 +382,7 @@ void cmDependsC::Scan(std::istream& is, const char* directory,
       // file their own directory by simply using "filename.h" (#12619)
       // This kind of problem will be fixed when a more
       // preprocessor-like implementation of this scanner is created.
-      if (this->IncludeRegexScan.find(entry.FileName.c_str())) {
+      if (this->IncludeRegexScan.find(entry.FileName)) {
         newCacheEntry->UnscannedEntries.push_back(entry);
         if (this->Encountered.find(entry.FileName) ==
             this->Encountered.end()) {
@@ -414,7 +418,7 @@ void cmDependsC::SetupTransforms()
       sep = "|";
     }
     xform += ")[ \t]*\\(([^),]*)\\)";
-    this->IncludeRegexTransform.compile(xform.c_str());
+    this->IncludeRegexTransform.compile(xform);
 
     // Build a string that encodes all transformation rules and will
     // change when rules are changed.
@@ -444,7 +448,7 @@ void cmDependsC::ParseTransform(std::string const& xform)
 void cmDependsC::TransformLine(std::string& line)
 {
   // Check for a transform rule match.  Return if none.
-  if (!this->IncludeRegexTransform.find(line.c_str())) {
+  if (!this->IncludeRegexTransform.find(line)) {
     return;
   }
   TransformRulesType::const_iterator tri =
@@ -456,11 +460,11 @@ void cmDependsC::TransformLine(std::string& line)
   // Construct the transformed line.
   std::string newline = this->IncludeRegexTransform.match(1);
   std::string arg = this->IncludeRegexTransform.match(4);
-  for (const char* c = tri->second.c_str(); *c; ++c) {
-    if (*c == '%') {
+  for (char c : tri->second) {
+    if (c == '%') {
       newline += arg;
     } else {
-      newline += *c;
+      newline += c;
     }
   }
 

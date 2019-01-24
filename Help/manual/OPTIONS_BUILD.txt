@@ -1,3 +1,11 @@
+``-S <path-to-source>``
+ Path to root directory of the CMake project to build.
+
+``-B <path-to-build>``
+ Path to directory which CMake will use as the root of build directory.
+
+ If the directory doesn't already exist CMake will make it.
+
 ``-C <initial-cache>``
  Pre-load a script to populate the cache.
 
@@ -11,7 +19,7 @@
  cache-format file.
 
 ``-D <var>:<type>=<value>, -D <var>=<value>``
- Create a cmake cache entry.
+ Create or update a cmake cache entry.
 
  When cmake is first run in an empty build tree, it creates a
  CMakeCache.txt file and populates it with customizable settings for

@@ -7,9 +7,9 @@
 #include <iostream>
 #include <map>
 #include <stdlib.h>
-#include <string.h>
 #include <utility>
 
+#include "cmAlgorithms.h"
 #include "cmFortranParser.h" /* Interface to parser object.  */
 #include "cmGeneratedFileStream.h"
 #include "cmLocalGenerator.h"
@@ -22,6 +22,22 @@
 // TODO: Test compiler for the case of the mod file.  Some always
 // use lower case and some always use upper case.  I do not know if any
 // use the case from the source code.
+
+static void cmFortranModuleAppendUpperLower(std::string const& mod,
+                                            std::string& mod_upper,
+                                            std::string& mod_lower)
+{
+  std::string::size_type ext_len = 0;
+  if (cmHasLiteralSuffix(mod, ".mod")) {
+    ext_len = 4;
+  } else if (cmHasLiteralSuffix(mod, ".smod")) {
+    ext_len = 5;
+  }
+  std::string const& name = mod.substr(0, mod.size() - ext_len);
+  std::string const& ext = mod.substr(mod.size() - ext_len);
+  mod_upper += cmSystemTools::UpperCase(name) + ext;
+  mod_lower += mod;
+}
 
 class cmDependsFortranInternals
 {
@@ -37,7 +53,8 @@ public:
   typedef std::map<std::string, cmFortranSourceInfo> ObjectInfoMap;
   ObjectInfoMap ObjectInfo;
 
-  cmFortranSourceInfo& CreateObjectInfo(const char* obj, const char* src)
+  cmFortranSourceInfo& CreateObjectInfo(const std::string& obj,
+                                        const std::string& src)
   {
     std::map<std::string, cmFortranSourceInfo>::iterator i =
       this->ObjectInfo.find(obj);
@@ -52,7 +69,6 @@ public:
 };
 
 cmDependsFortran::cmDependsFortran()
-  : Internal(nullptr)
 {
 }
 
@@ -105,8 +121,7 @@ bool cmDependsFortran::WriteDependencies(const std::set<std::string>& sources,
   bool okay = true;
   for (std::string const& src : sources) {
     // Get the information object for this source.
-    cmFortranSourceInfo& info =
-      this->Internal->CreateObjectInfo(obj.c_str(), src.c_str());
+    cmFortranSourceInfo& info = this->Internal->CreateObjectInfo(obj, src);
 
     // Create the parser object. The constructor takes info by reference,
     // so we may look into the resulting objects later.
@@ -137,7 +152,7 @@ bool cmDependsFortran::Finalize(std::ostream& makeDepends,
   this->LocateModules();
 
   // Get the directory in which stamp files will be stored.
-  const char* stamp_dir = this->TargetDirectory.c_str();
+  const std::string& stamp_dir = this->TargetDirectory;
 
   // Get the directory in which module files will be created.
   cmMakefile* mf = this->LocalGenerator->GetMakefile();
@@ -151,9 +166,8 @@ bool cmDependsFortran::Finalize(std::ostream& makeDepends,
   typedef cmDependsFortranInternals::ObjectInfoMap ObjectInfoMap;
   ObjectInfoMap const& objInfo = this->Internal->ObjectInfo;
   for (auto const& i : objInfo) {
-    if (!this->WriteDependenciesReal(i.first.c_str(), i.second, mod_dir,
-                                     stamp_dir, makeDepends,
-                                     internalDepends)) {
+    if (!this->WriteDependenciesReal(i.first, i.second, mod_dir, stamp_dir,
+                                     makeDepends, internalDepends)) {
       return false;
     }
   }
@@ -161,7 +175,7 @@ bool cmDependsFortran::Finalize(std::ostream& makeDepends,
   // Store the list of modules provided by this target.
   std::string fiName = this->TargetDirectory;
   fiName += "/fortran.internal";
-  cmGeneratedFileStream fiStream(fiName.c_str());
+  cmGeneratedFileStream fiStream(fiName);
   fiStream << "# The fortran modules provided by this target.\n";
   fiStream << "provides\n";
   std::set<std::string> const& provides = this->Internal->TargetProvides;
@@ -173,7 +187,7 @@ bool cmDependsFortran::Finalize(std::ostream& makeDepends,
   if (!provides.empty()) {
     std::string fcName = this->TargetDirectory;
     fcName += "/cmake_clean_Fortran.cmake";
-    cmGeneratedFileStream fcStream(fcName.c_str());
+    cmGeneratedFileStream fcStream(fcName);
     fcStream << "# Remove fortran modules provided by this target.\n";
     fcStream << "FILE(REMOVE";
     std::string currentBinDir =
@@ -181,16 +195,13 @@ bool cmDependsFortran::Finalize(std::ostream& makeDepends,
     for (std::string const& i : provides) {
       std::string mod_upper = mod_dir;
       mod_upper += "/";
-      mod_upper += cmSystemTools::UpperCase(i);
-      mod_upper += ".mod";
       std::string mod_lower = mod_dir;
       mod_lower += "/";
-      mod_lower += i;
-      mod_lower += ".mod";
+      cmFortranModuleAppendUpperLower(i, mod_upper, mod_lower);
       std::string stamp = stamp_dir;
       stamp += "/";
       stamp += i;
-      stamp += ".mod.stamp";
+      stamp += ".stamp";
       fcStream << "\n";
       fcStream << "  \""
                << this->MaybeConvertToRelativePath(currentBinDir, mod_lower)
@@ -243,22 +254,22 @@ void cmDependsFortran::LocateModules()
     std::string fname = targetDir + "/fortran.internal";
     cmsys::ifstream fin(fname.c_str());
     if (fin) {
-      this->MatchRemoteModules(fin, targetDir.c_str());
+      this->MatchRemoteModules(fin, targetDir);
     }
   }
 }
 
 void cmDependsFortran::MatchLocalModules()
 {
-  const char* stampDir = this->TargetDirectory.c_str();
+  std::string const& stampDir = this->TargetDirectory;
   std::set<std::string> const& provides = this->Internal->TargetProvides;
   for (std::string const& i : provides) {
-    this->ConsiderModule(i.c_str(), stampDir);
+    this->ConsiderModule(i, stampDir);
   }
 }
 
 void cmDependsFortran::MatchRemoteModules(std::istream& fin,
-                                          const char* stampDir)
+                                          const std::string& stampDir)
 {
   std::string line;
   bool doing_provides = false;
@@ -270,7 +281,14 @@ void cmDependsFortran::MatchRemoteModules(std::istream& fin,
 
     if (line[0] == ' ') {
       if (doing_provides) {
-        this->ConsiderModule(line.c_str() + 1, stampDir);
+        std::string mod = line;
+        if (!cmHasLiteralSuffix(mod, ".mod") &&
+            !cmHasLiteralSuffix(mod, ".smod")) {
+          // Support fortran.internal files left by older versions of CMake.
+          // They do not include the ".mod" extension.
+          mod += ".mod";
+        }
+        this->ConsiderModule(mod.c_str() + 1, stampDir);
       }
     } else if (line == "provides") {
       doing_provides = true;
@@ -280,7 +298,8 @@ void cmDependsFortran::MatchRemoteModules(std::istream& fin,
   }
 }
 
-void cmDependsFortran::ConsiderModule(const char* name, const char* stampDir)
+void cmDependsFortran::ConsiderModule(const std::string& name,
+                                      const std::string& stampDir)
 {
   // Locate each required module.
   typedef cmDependsFortranInternals::TargetRequiresMap TargetRequiresMap;
@@ -292,22 +311,22 @@ void cmDependsFortran::ConsiderModule(const char* name, const char* stampDir)
     std::string stampFile = stampDir;
     stampFile += "/";
     stampFile += name;
-    stampFile += ".mod.stamp";
+    stampFile += ".stamp";
     required->second = stampFile;
   }
 }
 
-bool cmDependsFortran::WriteDependenciesReal(const char* obj,
+bool cmDependsFortran::WriteDependenciesReal(std::string const& obj,
                                              cmFortranSourceInfo const& info,
                                              std::string const& mod_dir,
-                                             const char* stamp_dir,
+                                             std::string const& stamp_dir,
                                              std::ostream& makeDepends,
                                              std::ostream& internalDepends)
 {
   typedef cmDependsFortranInternals::TargetRequiresMap TargetRequiresMap;
 
   // Get the source file for this object.
-  const char* src = info.Source.c_str();
+  std::string const& src = info.Source;
 
   // Write the include dependencies to the output stream.
   std::string binDir = this->LocalGenerator->GetBinaryDirectory();
@@ -366,7 +385,6 @@ bool cmDependsFortran::WriteDependenciesReal(const char* obj,
       // Always use lower case for the mod stamp file name.  The
       // cmake_copy_f90_mod will call back to this class, which will
       // try various cases for the real mod file name.
-      std::string m = cmSystemTools::LowerCase(i);
       std::string modFile = mod_dir;
       modFile += "/";
       modFile += i;
@@ -375,8 +393,8 @@ bool cmDependsFortran::WriteDependenciesReal(const char* obj,
         cmOutputConverter::SHELL);
       std::string stampFile = stamp_dir;
       stampFile += "/";
-      stampFile += m;
-      stampFile += ".mod.stamp";
+      stampFile += i;
+      stampFile += ".stamp";
       stampFile = this->MaybeConvertToRelativePath(binDir, stampFile);
       std::string const stampFileForShell =
         this->LocalGenerator->ConvertToOutputFormat(stampFile,
@@ -423,10 +441,9 @@ bool cmDependsFortran::WriteDependenciesReal(const char* obj,
 bool cmDependsFortran::FindModule(std::string const& name, std::string& module)
 {
   // Construct possible names for the module file.
-  std::string mod_upper = cmSystemTools::UpperCase(name);
-  std::string mod_lower = name;
-  mod_upper += ".mod";
-  mod_lower += ".mod";
+  std::string mod_upper;
+  std::string mod_lower;
+  cmFortranModuleAppendUpperLower(name, mod_upper, mod_lower);
 
   // Search the include path for the module.
   std::string fullName;
@@ -470,20 +487,21 @@ bool cmDependsFortran::CopyModule(const std::vector<std::string>& args)
   if (args.size() >= 5) {
     compilerId = args[4];
   }
+  if (!cmHasLiteralSuffix(mod, ".mod") && !cmHasLiteralSuffix(mod, ".smod")) {
+    // Support depend.make files left by older versions of CMake.
+    // They do not include the ".mod" extension.
+    mod += ".mod";
+  }
   std::string mod_dir = cmSystemTools::GetFilenamePath(mod);
   if (!mod_dir.empty()) {
     mod_dir += "/";
   }
   std::string mod_upper = mod_dir;
-  mod_upper += cmSystemTools::UpperCase(cmSystemTools::GetFilenameName(mod));
   std::string mod_lower = mod_dir;
-  mod_lower += cmSystemTools::LowerCase(cmSystemTools::GetFilenameName(mod));
-  mod += ".mod";
-  mod_upper += ".mod";
-  mod_lower += ".mod";
+  cmFortranModuleAppendUpperLower(cmSystemTools::GetFilenameName(mod),
+                                  mod_upper, mod_lower);
   if (cmSystemTools::FileExists(mod_upper, true)) {
-    if (cmDependsFortran::ModulesDiffer(mod_upper.c_str(), stamp.c_str(),
-                                        compilerId.c_str())) {
+    if (cmDependsFortran::ModulesDiffer(mod_upper, stamp, compilerId)) {
       if (!cmSystemTools::CopyFileAlways(mod_upper, stamp)) {
         std::cerr << "Error copying Fortran module from \"" << mod_upper
                   << "\" to \"" << stamp << "\".\n";
@@ -493,8 +511,7 @@ bool cmDependsFortran::CopyModule(const std::vector<std::string>& args)
     return true;
   }
   if (cmSystemTools::FileExists(mod_lower, true)) {
-    if (cmDependsFortran::ModulesDiffer(mod_lower.c_str(), stamp.c_str(),
-                                        compilerId.c_str())) {
+    if (cmDependsFortran::ModulesDiffer(mod_lower, stamp, compilerId)) {
       if (!cmSystemTools::CopyFileAlways(mod_lower, stamp)) {
         std::cerr << "Error copying Fortran module from \"" << mod_lower
                   << "\" to \"" << stamp << "\".\n";
@@ -561,9 +578,9 @@ static bool cmFortranStreamsDiffer(std::istream& ifs1, std::istream& ifs2)
   return true;
 }
 
-bool cmDependsFortran::ModulesDiffer(const char* modFile,
-                                     const char* stampFile,
-                                     const char* compilerId)
+bool cmDependsFortran::ModulesDiffer(const std::string& modFile,
+                                     const std::string& stampFile,
+                                     const std::string& compilerId)
 {
   /*
   gnu >= 4.9:
@@ -597,16 +614,17 @@ bool cmDependsFortran::ModulesDiffer(const char* modFile,
    * source is compiled twice
    *   -SunPro
    */
-  if (strcmp(compilerId, "SunPro") == 0) {
+  if (compilerId == "SunPro") {
     return cmSystemTools::FilesDiffer(modFile, stampFile);
   }
 
 #if defined(_WIN32) || defined(__CYGWIN__)
-  cmsys::ifstream finModFile(modFile, std::ios::in | std::ios::binary);
-  cmsys::ifstream finStampFile(stampFile, std::ios::in | std::ios::binary);
+  cmsys::ifstream finModFile(modFile.c_str(), std::ios::in | std::ios::binary);
+  cmsys::ifstream finStampFile(stampFile.c_str(),
+                               std::ios::in | std::ios::binary);
 #else
-  cmsys::ifstream finModFile(modFile);
-  cmsys::ifstream finStampFile(stampFile);
+  cmsys::ifstream finModFile(modFile.c_str());
+  cmsys::ifstream finStampFile(stampFile.c_str());
 #endif
   if (!finModFile || !finStampFile) {
     // At least one of the files does not exist.  The modules differ.
@@ -621,7 +639,7 @@ bool cmDependsFortran::ModulesDiffer(const char* modFile,
    * Eat the stream content until all recompile only related changes
    * are left behind.
    */
-  if (strcmp(compilerId, "GNU") == 0) {
+  if (compilerId == "GNU") {
     // GNU Fortran 4.9 and later compress .mod files with gzip
     // but also do not include a date so we can fall through to
     // compare them without skipping any prefix.
@@ -644,7 +662,7 @@ bool cmDependsFortran::ModulesDiffer(const char* modFile,
         return true;
       }
     }
-  } else if (strcmp(compilerId, "Intel") == 0) {
+  } else if (compilerId == "Intel") {
     const char seq[2] = { '\n', '\0' };
     const int seqlen = 2;
 
@@ -676,9 +694,9 @@ bool cmDependsFortran::ModulesDiffer(const char* modFile,
 std::string cmDependsFortran::MaybeConvertToRelativePath(
   std::string const& base, std::string const& path)
 {
-  if (!cmOutputConverter::ContainedInDirectory(
-        base, path, this->LocalGenerator->GetStateSnapshot().GetDirectory())) {
+  if (!this->LocalGenerator->GetStateSnapshot().GetDirectory().ContainsBoth(
+        base, path)) {
     return path;
   }
-  return cmOutputConverter::ForceToRelativePath(base, path);
+  return cmSystemTools::ForceToRelativePath(base, path);
 }

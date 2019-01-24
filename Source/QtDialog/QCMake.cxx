@@ -10,7 +10,7 @@
 #include "cmSystemTools.h"
 
 #ifdef Q_OS_WIN
-#include "qt_windows.h" // For SetErrorMode
+#  include "qt_windows.h" // For SetErrorMode
 #endif
 
 QCMake::QCMake(QObject* p)
@@ -27,7 +27,7 @@ QCMake::QCMake(QObject* p)
   cmSystemTools::SetStdoutCallback(QCMake::stdoutCallback, this);
   cmSystemTools::SetStderrCallback(QCMake::stderrCallback, this);
 
-  this->CMakeInstance = new cmake(cmake::RoleProject);
+  this->CMakeInstance = new cmake(cmake::RoleProject, cmState::Project);
   this->CMakeInstance->SetCMakeEditCommand(
     cmSystemTools::GetCMakeGUICommand());
   this->CMakeInstance->SetProgressCallback(QCMake::progressCallback, this);
@@ -35,7 +35,8 @@ QCMake::QCMake(QObject* p)
   cmSystemTools::SetInterruptCallback(QCMake::interruptCallback, this);
 
   std::vector<cmake::GeneratorInfo> generators;
-  this->CMakeInstance->GetRegisteredGenerators(generators);
+  this->CMakeInstance->GetRegisteredGenerators(
+    generators, /*includeNamesWithPlatform=*/false);
 
   std::vector<cmake::GeneratorInfo>::const_iterator it;
   for (it = generators.begin(); it != generators.end(); ++it) {
@@ -74,6 +75,7 @@ void QCMake::setBinaryDirectory(const QString& _dir)
     cmState* state = this->CMakeInstance->GetState();
     this->setGenerator(QString());
     this->setToolset(QString());
+    this->setPlatform(QString());
     if (!this->CMakeInstance->LoadCache(
           this->BinaryDirectory.toLocal8Bit().data())) {
       QDir testDir(this->BinaryDirectory);
@@ -94,12 +96,18 @@ void QCMake::setBinaryDirectory(const QString& _dir)
     }
     const char* gen = state->GetCacheEntryValue("CMAKE_GENERATOR");
     if (gen) {
-      const char* extraGen =
+      const std::string* extraGen =
         state->GetInitializedCacheValue("CMAKE_EXTRA_GENERATOR");
       std::string curGen =
         cmExternalMakefileProjectGenerator::CreateFullGeneratorName(
-          gen, extraGen ? extraGen : "");
+          gen, extraGen ? *extraGen : "");
       this->setGenerator(QString::fromLocal8Bit(curGen.c_str()));
+    }
+
+    const char* platform =
+      state->GetCacheEntryValue("CMAKE_GENERATOR_PLATFORM");
+    if (platform) {
+      this->setPlatform(QString::fromLocal8Bit(platform));
     }
 
     const char* toolset = state->GetCacheEntryValue("CMAKE_GENERATOR_TOOLSET");
@@ -116,6 +124,14 @@ void QCMake::setGenerator(const QString& gen)
   if (this->Generator != gen) {
     this->Generator = gen;
     emit this->generatorChanged(this->Generator);
+  }
+}
+
+void QCMake::setPlatform(const QString& platform)
+{
+  if (this->Platform != platform) {
+    this->Platform = platform;
+    emit this->platformChanged(this->Platform);
   }
 }
 
@@ -140,7 +156,8 @@ void QCMake::configure()
   this->CMakeInstance->SetGlobalGenerator(
     this->CMakeInstance->CreateGlobalGenerator(
       this->Generator.toLocal8Bit().data()));
-  this->CMakeInstance->SetGeneratorPlatform("");
+  this->CMakeInstance->SetGeneratorPlatform(
+    this->Platform.toLocal8Bit().data());
   this->CMakeInstance->SetGeneratorToolset(this->Toolset.toLocal8Bit().data());
   this->CMakeInstance->LoadCache();
   this->CMakeInstance->SetWarnUninitialized(this->WarnUninitializedMode);

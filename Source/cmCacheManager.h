@@ -34,20 +34,15 @@ private:
   struct CacheEntry
   {
     std::string Value;
-    cmStateEnums::CacheEntryType Type;
+    cmStateEnums::CacheEntryType Type = cmStateEnums::UNINITIALIZED;
     cmPropertyMap Properties;
     std::vector<std::string> GetPropertyList() const;
     const char* GetProperty(const std::string&) const;
     void SetProperty(const std::string& property, const char* value);
     void AppendProperty(const std::string& property, const char* value,
                         bool asString = false);
-    bool Initialized;
-    CacheEntry()
-      : Value("")
-      , Type(cmStateEnums::UNINITIALIZED)
-      , Initialized(false)
-    {
-    }
+    bool Initialized = false;
+    CacheEntry() {}
   };
 
 public:
@@ -126,7 +121,7 @@ public:
   int GetSize() { return static_cast<int>(this->Cache.size()); }
 
   ///! Get a value from the cache given a key
-  const char* GetInitializedCacheValue(const std::string& key) const;
+  const std::string* GetInitializedCacheValue(const std::string& key) const;
 
   const char* GetCacheEntryValue(const std::string& key)
   {

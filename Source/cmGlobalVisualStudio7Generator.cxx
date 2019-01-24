@@ -6,6 +6,7 @@
 #include "cmGeneratorTarget.h"
 #include "cmLocalVisualStudio7Generator.h"
 #include "cmMakefile.h"
+#include "cmMessageType.h"
 #include "cmState.h"
 #include "cmUuid.h"
 #include "cmake.h"
@@ -37,23 +38,17 @@ static cmVS7FlagTable cmVS7ExtraFlagTable[] = {
   // and have EHa passed on the command line by leaving out the table
   // entry.
 
-  { 0, 0, 0, 0, 0 }
+  { "", "", "", "", 0 }
 };
 
 cmGlobalVisualStudio7Generator::cmGlobalVisualStudio7Generator(
-  cmake* cm, const std::string& platformName)
-  : cmGlobalVisualStudioGenerator(cm)
+  cmake* cm, std::string const& platformInGeneratorName)
+  : cmGlobalVisualStudioGenerator(cm, platformInGeneratorName)
 {
   this->IntelProjectVersion = 0;
   this->DevEnvCommandInitialized = false;
   this->MasmEnabled = false;
   this->NasmEnabled = false;
-
-  if (platformName.empty()) {
-    this->DefaultPlatformName = "Win32";
-  } else {
-    this->DefaultPlatformName = platformName;
-  }
   this->ExtraFlagTable = cmVS7ExtraFlagTable;
 }
 
@@ -199,7 +194,7 @@ void cmGlobalVisualStudio7Generator::GenerateBuildCommand(
   std::vector<std::string>& makeCommand, const std::string& makeProgram,
   const std::string& projectName, const std::string& /*projectDir*/,
   const std::string& targetName, const std::string& config, bool /*fast*/,
-  bool /*verbose*/, std::vector<std::string> const& makeOptions)
+  int /*jobs*/, bool /*verbose*/, std::vector<std::string> const& makeOptions)
 {
   // Select the caller- or user-preferred make program, else devenv.
   std::string makeProgramSelected =
@@ -254,13 +249,14 @@ cmLocalGenerator* cmGlobalVisualStudio7Generator::CreateLocalGenerator(
   return lg;
 }
 
-std::string const& cmGlobalVisualStudio7Generator::GetPlatformName() const
+#if defined(CMAKE_BUILD_WITH_CMAKE)
+Json::Value cmGlobalVisualStudio7Generator::GetJson() const
 {
-  if (!this->GeneratorPlatform.empty()) {
-    return this->GeneratorPlatform;
-  }
-  return this->DefaultPlatformName;
+  Json::Value generator = this->cmGlobalVisualStudioGenerator::GetJson();
+  generator["platform"] = this->GetPlatformName();
+  return generator;
 }
+#endif
 
 bool cmGlobalVisualStudio7Generator::SetSystemName(std::string const& s,
                                                    cmMakefile* mf)
@@ -268,18 +264,6 @@ bool cmGlobalVisualStudio7Generator::SetSystemName(std::string const& s,
   mf->AddDefinition("CMAKE_VS_INTEL_Fortran_PROJECT_VERSION",
                     this->GetIntelProjectVersion());
   return this->cmGlobalVisualStudioGenerator::SetSystemName(s, mf);
-}
-
-bool cmGlobalVisualStudio7Generator::SetGeneratorPlatform(std::string const& p,
-                                                          cmMakefile* mf)
-{
-  if (this->GetPlatformName() == "x64") {
-    mf->AddDefinition("CMAKE_FORCE_WIN64", "TRUE");
-  } else if (this->GetPlatformName() == "Itanium") {
-    mf->AddDefinition("CMAKE_FORCE_IA64", "TRUE");
-  }
-  mf->AddDefinition("CMAKE_VS_PLATFORM_NAME", this->GetPlatformName().c_str());
-  return this->cmGlobalVisualStudioGenerator::SetGeneratorPlatform(p, mf);
 }
 
 void cmGlobalVisualStudio7Generator::Generate()
@@ -293,19 +277,6 @@ void cmGlobalVisualStudio7Generator::Generate()
   // tell Visual Studio to reload them...
   if (!cmSystemTools::GetErrorOccuredFlag()) {
     this->CallVisualStudioMacro(MacroReload);
-  }
-
-  if (this->Version == VS8 && !this->CMakeInstance->GetIsInTryCompile()) {
-    const char* cmakeWarnVS8 =
-      this->CMakeInstance->GetState()->GetCacheEntryValue("CMAKE_WARN_VS8");
-    if (!cmakeWarnVS8 || !cmSystemTools::IsOff(cmakeWarnVS8)) {
-      this->CMakeInstance->IssueMessage(
-        cmake::WARNING,
-        "The \"Visual Studio 8 2005\" generator is deprecated "
-        "and will be removed in a future version of CMake."
-        "\n"
-        "Add CMAKE_WARN_VS8=OFF to the cache to disable this warning.");
-    }
   }
 }
 
@@ -410,12 +381,12 @@ void cmGlobalVisualStudio7Generator::WriteTargetsToSolution(
     if (written && this->UseFolderProperty()) {
       const std::string targetFolder = target->GetEffectiveFolderName();
       if (!targetFolder.empty()) {
-        std::vector<cmsys::String> tokens =
+        std::vector<std::string> tokens =
           cmSystemTools::SplitString(targetFolder, '/', false);
 
         std::string cumulativePath;
 
-        for (cmsys::String const& iter : tokens) {
+        for (std::string const& iter : tokens) {
           if (!iter.size()) {
             continue;
           }

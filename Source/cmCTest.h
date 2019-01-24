@@ -7,7 +7,7 @@
 
 #include "cmDuration.h"
 #include "cmProcessOutput.h"
-#include "cmsys/String.hxx"
+
 #include <chrono>
 #include <map>
 #include <set>
@@ -50,27 +50,25 @@ public:
     PartNotes,
     PartExtraFiles,
     PartUpload,
+    PartDone,
     PartCount // Update names in constructor when adding a part
   };
 
   /** Representation of one part.  */
   struct PartInfo
   {
-    PartInfo()
-      : Enabled(false)
-    {
-    }
+    PartInfo() {}
 
     void SetName(const std::string& name) { this->Name = name; }
     const std::string& GetName() const { return this->Name; }
 
     void Enable() { this->Enabled = true; }
-    operator bool() const { return this->Enabled; }
+    explicit operator bool() const { return this->Enabled; }
 
     std::vector<std::string> SubmitFiles;
 
   private:
-    bool Enabled;
+    bool Enabled = false;
     std::string Name;
   };
 #ifdef CMAKE_BUILD_WITH_CMAKE
@@ -93,7 +91,7 @@ public:
       if the string does not name a valid part.  */
   Part GetPartFromName(const char* name);
 
-  typedef std::vector<cmsys::String> VectorOfStrings;
+  typedef std::vector<std::string> VectorOfStrings;
   typedef std::set<std::string> SetOfStrings;
 
   /** Process Command line arguments */
@@ -139,7 +137,7 @@ public:
    */
   int TestDirectory(bool memcheck);
 
-  /** what is the configuraiton type, e.g. Debug, Release etc. */
+  /** what is the configuration type, e.g. Debug, Release etc. */
   std::string const& GetConfigType();
   cmDuration GetTimeOut() { return this->TimeOut; }
   void SetTimeOut(cmDuration t) { this->TimeOut = t; }
@@ -177,6 +175,8 @@ public:
   void SetCTestConfiguration(const char* name, const char* value,
                              bool suppress = false);
   void EmptyCTestConfiguration();
+
+  std::string GetSubmitURL();
 
   /**
    * constructor and destructor
@@ -216,6 +216,10 @@ public:
 
   /** Should we only show what we would do? */
   bool GetShowOnly();
+
+  bool GetOutputAsJson();
+
+  int GetOutputAsJsonVersion();
 
   bool ShouldUseHTTP10() { return this->UseHTTP10; }
 
@@ -295,9 +299,10 @@ public:
 
   enum
   {
-    EXPERIMENTAL,
-    NIGHTLY,
-    CONTINUOUS
+    UNKNOWN = -1,
+    EXPERIMENTAL = 0,
+    NIGHTLY = 1,
+    CONTINUOUS = 2,
   };
 
   /** provide some more detailed info on the return code for ctest */
@@ -347,7 +352,7 @@ public:
                                               const std::string& cmake_var,
                                               bool suppress = false);
 
-  /** Make string safe to be send as an URL */
+  /** Make string safe to be sent as a URL */
   static std::string MakeURLSafe(const std::string&);
 
   /** Decode a URL to the original string.  */
@@ -372,6 +377,9 @@ public:
   /** Create XML file that contains all the notes specified */
   int GenerateNotesFile(const VectorOfStrings& files);
 
+  /** Create XML file to indicate that build is complete */
+  int GenerateDoneFile();
+
   /** Submit extra files to the server */
   bool SubmitExtraFiles(const char* files);
   bool SubmitExtraFiles(const VectorOfStrings& files);
@@ -389,6 +397,7 @@ public:
     OUTPUT,
     HANDLER_OUTPUT,
     HANDLER_PROGRESS_OUTPUT,
+    HANDLER_TEST_PROGRESS_OUTPUT,
     HANDLER_VERBOSE_OUTPUT,
     WARNING,
     ERROR_MESSAGE,
@@ -399,9 +408,22 @@ public:
   void Log(int logType, const char* file, int line, const char* msg,
            bool suppress = false);
 
-  /** Get the version of dart server */
-  int GetDartVersion() { return this->DartVersion; }
-  int GetDropSiteCDash() { return this->DropSiteCDash; }
+  /** Color values */
+  enum class Color
+  {
+    CLEAR_COLOR = 0,
+    RED = 31,
+    GREEN = 32,
+    YELLOW = 33,
+    BLUE = 34
+  };
+
+  /** Get color code characters for a specific color */
+  std::string GetColorCode(Color color) const;
+
+  /** The Build ID is assigned by CDash */
+  void SetBuildID(const std::string& id) { this->BuildID = id; }
+  std::string GetBuildID() { return this->BuildID; }
 
   /** Add file to be submitted */
   void AddSubmitFile(Part part, const char* name);
@@ -427,6 +449,8 @@ public:
 
   void SetFailover(bool failover) { this->Failover = failover; }
   bool GetFailover() { return this->Failover; }
+
+  bool GetTestProgressOutput() const { return this->TestProgressOutput; }
 
   bool GetVerbose() { return this->Verbose; }
   bool GetExtraVerbose() { return this->ExtraVerbose; }
@@ -466,6 +490,7 @@ private:
   std::string ConfigType;
   std::string ScheduleType;
   std::chrono::system_clock::time_point StopTime;
+  bool TestProgressOutput;
   bool Verbose;
   bool ExtraVerbose;
   bool ProduceXML;
@@ -474,6 +499,8 @@ private:
   bool UseHTTP10;
   bool PrintLabels;
   bool Failover;
+
+  bool FlushTestProgressLine;
 
   bool ForceNewCTestProcess;
 
@@ -486,6 +513,8 @@ private:
   t_TestingHandlers TestingHandlers;
 
   bool ShowOnly;
+  bool OutputAsJson;
+  int OutputAsJsonVersion;
 
   /** Map of configuration properties */
   typedef std::map<std::string, std::string> CTestConfigurationMap;
@@ -560,7 +589,18 @@ private:
   bool HandleCommandLineArguments(size_t& i, std::vector<std::string>& args,
                                   std::string& errormsg);
 
-  /** hande the -S -SP and -SR arguments */
+#if !defined(_WIN32)
+  /** returns true iff the console supports progress output */
+  static bool ConsoleIsNotDumb();
+#endif
+
+  /** returns true iff the console supports progress output */
+  static bool ProgressOutputSupportedByConsole();
+
+  /** returns true iff the console supports colored output */
+  static bool ColoredOutputSupportedByConsole();
+
+  /** handle the -S -SP and -SR arguments */
   void HandleScriptArguments(size_t& i, std::vector<std::string>& args,
                              bool& SRArgumentSpecified);
 
@@ -594,8 +634,7 @@ private:
   bool ShowLineNumbers;
   bool Quiet;
 
-  int DartVersion;
-  bool DropSiteCDash;
+  std::string BuildID;
 
   std::vector<std::string> InitialCommandLineArguments;
 
@@ -605,6 +644,7 @@ private:
   int OutputLogFileLastTag;
 
   bool OutputTestOutputOnTestFailure;
+  bool OutputColorCode;
 
   std::map<std::string, std::string> Definitions;
 };

@@ -9,12 +9,14 @@ A ``pkg-config`` module for CMake.
 
 Finds the ``pkg-config`` executable and adds the :command:`pkg_get_variable`,
 :command:`pkg_check_modules` and :command:`pkg_search_module` commands. The
-following variables will also be set::
+following variables will also be set:
 
-  PKG_CONFIG_FOUND          ... if pkg-config executable was found
-  PKG_CONFIG_EXECUTABLE     ... pathname of the pkg-config program
-  PKG_CONFIG_VERSION_STRING ... the version of the pkg-config program found
-                                (since CMake 2.8.8)
+``PKG_CONFIG_FOUND``
+  if pkg-config executable was found
+``PKG_CONFIG_EXECUTABLE``
+  pathname of the pkg-config program
+``PKG_CONFIG_VERSION_STRING``
+  version of pkg-config (since CMake 2.8.8)
 
 #]========================================]
 
@@ -86,7 +88,9 @@ endmacro()
 .. command:: pkg_get_variable
 
   Retrieves the value of a pkg-config variable ``varName`` and stores it in the
-  result variable ``resultVar`` in the calling scope. ::
+  result variable ``resultVar`` in the calling scope.
+
+  .. code-block:: cmake
 
     pkg_get_variable(<resultVar> <moduleName> <varName>)
 
@@ -114,12 +118,13 @@ macro(_pkgconfig_invoke_dyn _pkglist _prefix _varname cleanup_regexp)
 endmacro()
 
 # Splits given arguments into options and a package list
-macro(_pkgconfig_parse_options _result _is_req _is_silent _no_cmake_path _no_cmake_environment_path _imp_target)
+macro(_pkgconfig_parse_options _result _is_req _is_silent _no_cmake_path _no_cmake_environment_path _imp_target _imp_target_global)
   set(${_is_req} 0)
   set(${_is_silent} 0)
   set(${_no_cmake_path} 0)
   set(${_no_cmake_environment_path} 0)
   set(${_imp_target} 0)
+  set(${_imp_target_global} 0)
   if(DEFINED PKG_CONFIG_USE_CMAKE_PREFIX_PATH)
     if(NOT PKG_CONFIG_USE_CMAKE_PREFIX_PATH)
       set(${_no_cmake_path} 1)
@@ -146,7 +151,14 @@ macro(_pkgconfig_parse_options _result _is_req _is_silent _no_cmake_path _no_cma
     if (_pkg STREQUAL "IMPORTED_TARGET")
       set(${_imp_target} 1)
     endif()
+    if (_pkg STREQUAL "GLOBAL")
+      set(${_imp_target_global} 1)
+    endif()
   endforeach()
+
+  if (${_imp_target_global} AND NOT ${_imp_target})
+    message(SEND_ERROR "the argument GLOBAL may only be used together with IMPORTED_TARGET")
+  endif()
 
   set(${_result} ${ARGN})
   list(REMOVE_ITEM ${_result} "REQUIRED")
@@ -154,6 +166,7 @@ macro(_pkgconfig_parse_options _result _is_req _is_silent _no_cmake_path _no_cma
   list(REMOVE_ITEM ${_result} "NO_CMAKE_PATH")
   list(REMOVE_ITEM ${_result} "NO_CMAKE_ENVIRONMENT_PATH")
   list(REMOVE_ITEM ${_result} "IMPORTED_TARGET")
+  list(REMOVE_ITEM ${_result} "GLOBAL")
 endmacro()
 
 # Add the content of a variable or an environment variable to a list of
@@ -183,8 +196,8 @@ endfunction()
 
 # scan the LDFLAGS returned by pkg-config for library directories and
 # libraries, figure out the absolute paths of that libraries in the
-# given directories, and create an imported target from them
-function(_pkg_create_imp_target _prefix _no_cmake_path _no_cmake_environment_path)
+# given directories
+function(_pkg_find_libs _prefix _no_cmake_path _no_cmake_environment_path)
   unset(_libs)
   unset(_find_opts)
 
@@ -200,9 +213,7 @@ function(_pkg_create_imp_target _prefix _no_cmake_path _no_cmake_environment_pat
   unset(_search_paths)
   foreach (flag IN LISTS ${_prefix}_LDFLAGS)
     if (flag MATCHES "^-L(.*)")
-      # only look into the given paths from now on
       list(APPEND _search_paths ${CMAKE_MATCH_1})
-      set(_find_opts HINTS ${_search_paths} NO_DEFAULT_PATH)
       continue()
     endif()
     if (flag MATCHES "^-l(.*)")
@@ -211,25 +222,41 @@ function(_pkg_create_imp_target _prefix _no_cmake_path _no_cmake_environment_pat
       continue()
     endif()
 
+    if(_search_paths)
+        # Firstly search in -L paths
+        find_library(pkgcfg_lib_${_prefix}_${_pkg_search}
+                     NAMES ${_pkg_search}
+                     HINTS ${_search_paths} NO_DEFAULT_PATH)
+    endif()
     find_library(pkgcfg_lib_${_prefix}_${_pkg_search}
                  NAMES ${_pkg_search}
                  ${_find_opts})
+    mark_as_advanced(pkgcfg_lib_${_prefix}_${_pkg_search})
     list(APPEND _libs "${pkgcfg_lib_${_prefix}_${_pkg_search}}")
   endforeach()
 
+  set(${_prefix}_LINK_LIBRARIES "${_libs}" PARENT_SCOPE)
+endfunction()
+
+# create an imported target from all the information returned by pkg-config
+function(_pkg_create_imp_target _prefix _imp_target_global)
   # only create the target if it is linkable, i.e. no executables
   if (NOT TARGET PkgConfig::${_prefix}
-      AND ( ${_prefix}_INCLUDE_DIRS OR _libs OR ${_prefix}_CFLAGS_OTHER ))
-    add_library(PkgConfig::${_prefix} INTERFACE IMPORTED)
+      AND ( ${_prefix}_INCLUDE_DIRS OR ${_prefix}_LINK_LIBRARIES OR ${_prefix}_CFLAGS_OTHER ))
+    if(${_imp_target_global})
+      set(_global_opt "GLOBAL")
+    else()
+      unset(_global_opt)
+    endif()
+    add_library(PkgConfig::${_prefix} INTERFACE IMPORTED ${_global_opt})
 
-    unset(_props)
     if(${_prefix}_INCLUDE_DIRS)
       set_property(TARGET PkgConfig::${_prefix} PROPERTY
                    INTERFACE_INCLUDE_DIRECTORIES "${${_prefix}_INCLUDE_DIRS}")
     endif()
-    if(_libs)
+    if(${_prefix}_LINK_LIBRARIES)
       set_property(TARGET PkgConfig::${_prefix} PROPERTY
-                   INTERFACE_LINK_LIBRARIES "${_libs}")
+                   INTERFACE_LINK_LIBRARIES "${${_prefix}_LINK_LIBRARIES}")
     endif()
     if(${_prefix}_CFLAGS_OTHER)
       set_property(TARGET PkgConfig::${_prefix} PROPERTY
@@ -238,8 +265,17 @@ function(_pkg_create_imp_target _prefix _no_cmake_path _no_cmake_environment_pat
   endif()
 endfunction()
 
+# recalculate the dynamic output
+# this is a macro and not a function so the result of _pkg_find_libs is automatically propagated
+macro(_pkg_recalculate _prefix _no_cmake_path _no_cmake_environment_path _imp_target _imp_target_global)
+  _pkg_find_libs(${_prefix} ${_no_cmake_path} ${_no_cmake_environment_path})
+  if(${_imp_target})
+    _pkg_create_imp_target(${_prefix} ${_imp_target_global})
+  endif()
+endmacro()
+
 ###
-macro(_pkg_check_modules_internal _is_required _is_silent _no_cmake_path _no_cmake_environment_path _imp_target _prefix)
+macro(_pkg_check_modules_internal _is_required _is_silent _no_cmake_path _no_cmake_environment_path _imp_target _imp_target_global _prefix)
   _pkgconfig_unset(${_prefix}_FOUND)
   _pkgconfig_unset(${_prefix}_VERSION)
   _pkgconfig_unset(${_prefix}_PREFIX)
@@ -366,7 +402,7 @@ macro(_pkg_check_modules_internal _is_required _is_silent _no_cmake_path _no_cma
       set(_pkg_check_modules_exist_query)
 
       # check whether version is given
-      if (_pkg_check_modules_pkg MATCHES "(.*[^><])(>=|=|<=)(.*)")
+      if (_pkg_check_modules_pkg MATCHES "(.*[^><])(=|[><]=?)(.*)")
         set(_pkg_check_modules_pkg_name "${CMAKE_MATCH_1}")
         set(_pkg_check_modules_pkg_op "${CMAKE_MATCH_2}")
         set(_pkg_check_modules_pkg_ver "${CMAKE_MATCH_3}")
@@ -384,9 +420,11 @@ macro(_pkg_check_modules_internal _is_required _is_silent _no_cmake_path _no_cma
       list(APPEND _pkg_check_modules_packages    "${_pkg_check_modules_pkg_name}")
 
       # create the final query which is of the format:
+      # * <pkg-name> > <version>
       # * <pkg-name> >= <version>
       # * <pkg-name> = <version>
       # * <pkg-name> <= <version>
+      # * <pkg-name> < <version>
       # * --exists <pkg-name>
       list(APPEND _pkg_check_modules_exist_query --print-errors --short-errors)
       if (_pkg_check_modules_pkg_op)
@@ -457,9 +495,7 @@ macro(_pkg_check_modules_internal _is_required _is_silent _no_cmake_path _no_cma
       _pkgconfig_invoke_dyn("${_pkg_check_modules_packages}" "${_prefix}" CFLAGS              ""        --cflags )
       _pkgconfig_invoke_dyn("${_pkg_check_modules_packages}" "${_prefix}" CFLAGS_OTHER        ""        --cflags-only-other )
 
-      if (_imp_target)
-        _pkg_create_imp_target("${_prefix}" ${_no_cmake_path} ${_no_cmake_environment_path})
-      endif()
+      _pkg_recalculate("${_prefix}" ${_no_cmake_path} ${_no_cmake_environment_path} ${_imp_target} ${_imp_target_global})
     endif()
 
     if(NOT "${_extra_paths}" STREQUAL "")
@@ -481,13 +517,15 @@ endmacro()
 .. command:: pkg_check_modules
 
   Checks for all the given modules, setting a variety of result variables in
-  the calling scope. ::
+  the calling scope.
+
+  .. code-block:: cmake
 
     pkg_check_modules(<prefix>
                       [REQUIRED] [QUIET]
                       [NO_CMAKE_PATH]
                       [NO_CMAKE_ENVIRONMENT_PATH]
-                      [IMPORTED_TARGET]
+                      [IMPORTED_TARGET [GLOBAL]]
                       <moduleSpec> [<moduleSpec>...])
 
   When the ``REQUIRED`` argument is given, the command will fail with an error
@@ -506,28 +544,42 @@ endmacro()
 
   The ``IMPORTED_TARGET`` argument will create an imported target named
   ``PkgConfig::<prefix>`` that can be passed directly as an argument to
-  :command:`target_link_libraries`.
+  :command:`target_link_libraries`. The ``GLOBAL`` argument will make the
+  imported target available in global scope.
 
-  Each ``<moduleSpec>`` must be in one of the following formats::
+  Each ``<moduleSpec>`` can be either a bare module name or it can be a
+  module name with a version constraint (operators ``=``, ``<``, ``>``,
+  ``<=`` and ``>=`` are supported).  The following are examples for a module
+  named ``foo`` with various constraints:
 
-    {moduleName}            ... matches any version
-    {moduleName}>={version} ... at least version <version> is required
-    {moduleName}={version}  ... exactly version <version> is required
-    {moduleName}<={version} ... modules must not be newer than <version>
+  - ``foo`` matches any version.
+  - ``foo<2`` only matches versions before 2.
+  - ``foo>=3.1`` matches any version from 3.1 or later.
+  - ``foo=1.2.3`` requires that foo must be exactly version 1.2.3.
 
-  The following variables may be set upon return.  Two sets of values exist,
-  one for the common case (``<XXX> = <prefix>``) and another for the
-  information ``pkg-config`` provides when it is called with the ``--static``
-  option (``<XXX> = <prefix>_STATIC``)::
+  The following variables may be set upon return.  Two sets of values exist:
+  One for the common case (``<XXX> = <prefix>``) and another for the
+  information ``pkg-config`` provides when called with the ``--static``
+  option (``<XXX> = <prefix>_STATIC``).
 
-    <XXX>_FOUND          ... set to 1 if module(s) exist
-    <XXX>_LIBRARIES      ... only the libraries (without the '-l')
-    <XXX>_LIBRARY_DIRS   ... the paths of the libraries (without the '-L')
-    <XXX>_LDFLAGS        ... all required linker flags
-    <XXX>_LDFLAGS_OTHER  ... all other linker flags
-    <XXX>_INCLUDE_DIRS   ... the '-I' preprocessor flags (without the '-I')
-    <XXX>_CFLAGS         ... all required cflags
-    <XXX>_CFLAGS_OTHER   ... the other compiler flags
+  ``<XXX>_FOUND``
+    set to 1 if module(s) exist
+  ``<XXX>_LIBRARIES``
+    only the libraries (without the '-l')
+  ``<XXX>_LINK_LIBRARIES``
+    the libraries and their absolute paths
+  ``<XXX>_LIBRARY_DIRS``
+    the paths of the libraries (without the '-L')
+  ``<XXX>_LDFLAGS``
+    all required linker flags
+  ``<XXX>_LDFLAGS_OTHER``
+    all other linker flags
+  ``<XXX>_INCLUDE_DIRS``
+    the '-I' preprocessor flags (without the '-I')
+  ``<XXX>_CFLAGS``
+    all required cflags
+  ``<XXX>_CFLAGS_OTHER``
+    the other compiler flags
 
   All but ``<XXX>_FOUND`` may be a :ref:`;-list <CMake Language Lists>` if the
   associated variable returned from ``pkg-config`` has multiple values.
@@ -535,14 +587,18 @@ endmacro()
   There are some special variables whose prefix depends on the number of
   ``<moduleSpec>`` given.  When there is only one ``<moduleSpec>``,
   ``<YYY>`` will simply be ``<prefix>``, but if two or more ``<moduleSpec>``
-  items are given, ``<YYY>`` will be ``<prefix>_<moduleName>``::
+  items are given, ``<YYY>`` will be ``<prefix>_<moduleName>``.
 
-    <YYY>_VERSION    ... version of the module
-    <YYY>_PREFIX     ... prefix directory of the module
-    <YYY>_INCLUDEDIR ... include directory of the module
-    <YYY>_LIBDIR     ... lib directory of the module
+  ``<YYY>_VERSION``
+    version of the module
+  ``<YYY>_PREFIX``
+    prefix directory of the module
+  ``<YYY>_INCLUDEDIR``
+    include directory of the module
+  ``<YYY>_LIBDIR``
+    lib directory of the module
 
-  Examples
+  Examples:
 
   .. code-block:: cmake
 
@@ -578,19 +634,21 @@ endmacro()
     XRENDER_STATIC_LIBRARIES=Xrender;X11;pthread;Xau;Xdmcp
 #]========================================]
 macro(pkg_check_modules _prefix _module0)
-  _pkgconfig_parse_options(_pkg_modules _pkg_is_required _pkg_is_silent _no_cmake_path _no_cmake_environment_path _imp_target "${_module0}" ${ARGN})
+  _pkgconfig_parse_options(_pkg_modules _pkg_is_required _pkg_is_silent _no_cmake_path _no_cmake_environment_path _imp_target _imp_target_global "${_module0}" ${ARGN})
   # check cached value
   if (NOT DEFINED __pkg_config_checked_${_prefix} OR __pkg_config_checked_${_prefix} LESS ${PKG_CONFIG_VERSION} OR NOT ${_prefix}_FOUND OR
       (NOT "${ARGN}" STREQUAL "" AND NOT "${__pkg_config_arguments_${_prefix}}" STREQUAL "${_module0};${ARGN}") OR
       (    "${ARGN}" STREQUAL "" AND NOT "${__pkg_config_arguments_${_prefix}}" STREQUAL "${_module0}"))
-    _pkg_check_modules_internal("${_pkg_is_required}" "${_pkg_is_silent}" ${_no_cmake_path} ${_no_cmake_environment_path} ${_imp_target} "${_prefix}" ${_pkg_modules})
+    _pkg_check_modules_internal("${_pkg_is_required}" "${_pkg_is_silent}" ${_no_cmake_path} ${_no_cmake_environment_path} ${_imp_target} ${_imp_target_global} "${_prefix}" ${_pkg_modules})
 
     _pkgconfig_set(__pkg_config_checked_${_prefix} ${PKG_CONFIG_VERSION})
     if (${_prefix}_FOUND)
       _pkgconfig_set(__pkg_config_arguments_${_prefix} "${_module0};${ARGN}")
     endif()
-  elseif (${_prefix}_FOUND AND ${_imp_target})
-    _pkg_create_imp_target("${_prefix}" ${_no_cmake_path} ${_no_cmake_environment_path})
+  else()
+    if (${_prefix}_FOUND)
+      _pkg_recalculate("${_prefix}" ${_no_cmake_path} ${_no_cmake_environment_path} ${_imp_target} ${_imp_target_global})
+    endif()
   endif()
 endmacro()
 
@@ -600,23 +658,25 @@ endmacro()
 
   The behavior of this command is the same as :command:`pkg_check_modules`,
   except that rather than checking for all the specified modules, it searches
-  for just the first successful match. ::
+  for just the first successful match.
+
+  .. code-block:: cmake
 
     pkg_search_module(<prefix>
                       [REQUIRED] [QUIET]
                       [NO_CMAKE_PATH]
                       [NO_CMAKE_ENVIRONMENT_PATH]
-                      [IMPORTED_TARGET]
+                      [IMPORTED_TARGET [GLOBAL]]
                       <moduleSpec> [<moduleSpec>...])
 
-  Examples
+  Example:
 
   .. code-block:: cmake
 
     pkg_search_module (BAR libxml-2.0 libxml2 libxml>=2)
 #]========================================]
 macro(pkg_search_module _prefix _module0)
-  _pkgconfig_parse_options(_pkg_modules_alt _pkg_is_required _pkg_is_silent _no_cmake_path _no_cmake_environment_path _imp_target "${_module0}" ${ARGN})
+  _pkgconfig_parse_options(_pkg_modules_alt _pkg_is_required _pkg_is_silent _no_cmake_path _no_cmake_environment_path _imp_target _imp_target_global "${_module0}" ${ARGN})
   # check cached value
   if (NOT DEFINED __pkg_config_checked_${_prefix} OR __pkg_config_checked_${_prefix} LESS ${PKG_CONFIG_VERSION} OR NOT ${_prefix}_FOUND)
     set(_pkg_modules_found 0)
@@ -628,7 +688,7 @@ macro(pkg_search_module _prefix _module0)
     # iterate through all modules and stop at the first working one.
     foreach(_pkg_alt ${_pkg_modules_alt})
       if(NOT _pkg_modules_found)
-        _pkg_check_modules_internal(0 1 ${_no_cmake_path} ${_no_cmake_environment_path} ${_imp_target} "${_prefix}" "${_pkg_alt}")
+        _pkg_check_modules_internal(0 1 ${_no_cmake_path} ${_no_cmake_environment_path} ${_imp_target} ${_imp_target_global} "${_prefix}" "${_pkg_alt}")
       endif()
 
       if (${_prefix}_FOUND)
@@ -643,8 +703,8 @@ macro(pkg_search_module _prefix _module0)
     endif()
 
     _pkgconfig_set(__pkg_config_checked_${_prefix} ${PKG_CONFIG_VERSION})
-  elseif (${_prefix}_FOUND AND ${_imp_target})
-    _pkg_create_imp_target("${_prefix}" ${_no_cmake_path} ${_no_cmake_environment_path})
+  elseif (${_prefix}_FOUND)
+    _pkg_recalculate("${_prefix}" ${_no_cmake_path} ${_no_cmake_environment_path} ${_imp_target} ${_imp_target_global})
   endif()
 endmacro()
 

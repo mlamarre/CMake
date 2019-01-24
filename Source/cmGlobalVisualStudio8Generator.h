@@ -13,10 +13,6 @@
 class cmGlobalVisualStudio8Generator : public cmGlobalVisualStudio71Generator
 {
 public:
-  cmGlobalVisualStudio8Generator(cmake* cm, const std::string& name,
-                                 const std::string& platformName);
-  static cmGlobalGeneratorFactory* NewFactory();
-
   ///! Get the name for the generator.
   std::string GetName() const override { return this->Name; }
 
@@ -35,19 +31,6 @@ public:
    */
   void Configure() override;
 
-  /**
-   * Where does this version of Visual Studio look for macros for the
-   * current user? Returns the empty string if this version of Visual
-   * Studio does not implement support for VB macros.
-   */
-  std::string GetUserMacrosDirectory() override;
-
-  /**
-   * What is the reg key path to "vsmacros" for this version of Visual
-   * Studio?
-   */
-  std::string GetUserMacrosRegKeyBase() override;
-
   /** Return true if the target project file should have the option
       LinkLibraryDependencies and link to .sln dependencies. */
   bool NeedLinkLibraryDependencies(cmGeneratorTarget* target) override;
@@ -58,12 +41,11 @@ public:
     return !this->WindowsCEVersion.empty();
   }
 
-  /** Is the installed VS an Express edition?  */
-  bool IsExpressEdition() const { return this->ExpressEdition; }
-
 protected:
+  cmGlobalVisualStudio8Generator(cmake* cm, const std::string& name,
+                                 std::string const& platformInGeneratorName);
+
   void AddExtraIDETargets() override;
-  const char* GetIDEVersion() override { return "8.0"; }
 
   std::string FindDevEnvCommand() override;
 
@@ -75,7 +57,6 @@ protected:
   virtual bool NeedsDeploy(cmStateEnums::TargetType type) const;
 
   static cmIDEFlagTable const* GetExtraFlagTableVS8();
-  void WriteSLNHeader(std::ostream& fout) override;
   void WriteSolutionConfigurations(
     std::ostream& fout, std::vector<std::string> const& configs) override;
   void WriteProjectConfigurations(
@@ -88,14 +69,9 @@ protected:
                            const char* path,
                            const cmGeneratorTarget* t) override;
 
-  bool UseFolderProperty();
+  bool UseFolderProperty() const override;
 
   std::string Name;
   std::string WindowsCEVersion;
-  bool ExpressEdition;
-
-private:
-  class Factory;
-  friend class Factory;
 };
 #endif

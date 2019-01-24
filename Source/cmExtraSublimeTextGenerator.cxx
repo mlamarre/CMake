@@ -14,6 +14,7 @@
 #include "cmGlobalGenerator.h"
 #include "cmLocalGenerator.h"
 #include "cmMakefile.h"
+#include "cmMessageType.h"
 #include "cmSourceFile.h"
 #include "cmStateTypes.h"
 #include "cmSystemTools.h"
@@ -55,7 +56,6 @@ cmExtraSublimeTextGenerator::GetFactory()
 }
 
 cmExtraSublimeTextGenerator::cmExtraSublimeTextGenerator()
-  : cmExternalMakefileProjectGenerator()
 {
   this->ExcludeBuildFolder = false;
 }
@@ -91,7 +91,7 @@ void cmExtraSublimeTextGenerator::CreateNewProjectFile(
 {
   const cmMakefile* mf = lgs[0]->GetMakefile();
 
-  cmGeneratedFileStream fout(filename.c_str());
+  cmGeneratedFileStream fout(filename);
   if (!fout) {
     return;
   }
@@ -155,7 +155,7 @@ void cmExtraSublimeTextGenerator::CreateNewProjectFile(
         e << "Could not parse Env Vars specified in "
              "\"CMAKE_SUBLIME_TEXT_2_ENV_SETTINGS\""
           << ", corrupted string " << t;
-        mf->IssueMessage(cmake::FATAL_ERROR, e.str());
+        mf->IssueMessage(MessageType::FATAL_ERROR, e.str());
       }
     }
     fout << "\n\t\t}";
@@ -354,8 +354,8 @@ std::string cmExtraSublimeTextGenerator::ComputeFlagsForObject(
   lg->GetTargetCompileFlags(gtgt, config, language, flags);
 
   // Add source file specific flags.
-  cmGeneratorExpressionInterpreter genexInterpreter(lg, gtgt, config,
-                                                    gtgt->GetName(), language);
+  cmGeneratorExpressionInterpreter genexInterpreter(lg, config, gtgt,
+                                                    language);
 
   const std::string COMPILE_FLAGS("COMPILE_FLAGS");
   if (const char* cflags = source->GetProperty(COMPILE_FLAGS)) {
@@ -381,16 +381,11 @@ std::string cmExtraSublimeTextGenerator::ComputeDefines(
   cmMakefile* makefile = lg->GetMakefile();
   const std::string& language = source->GetLanguage();
   const std::string& config = makefile->GetSafeDefinition("CMAKE_BUILD_TYPE");
-  cmGeneratorExpressionInterpreter genexInterpreter(
-    lg, target, config, target->GetName(), language);
-
-  // Add the export symbol definition for shared library objects.
-  if (const char* exportMacro = target->GetExportMacro()) {
-    lg->AppendDefines(defines, exportMacro);
-  }
+  cmGeneratorExpressionInterpreter genexInterpreter(lg, config, target,
+                                                    language);
 
   // Add preprocessor definitions for this target and configuration.
-  lg->AddCompileDefinitions(defines, target, config, language);
+  lg->GetTargetDefines(target, config, language, defines);
   const std::string COMPILE_DEFINITIONS("COMPILE_DEFINITIONS");
   if (const char* compile_defs = source->GetProperty(COMPILE_DEFINITIONS)) {
     lg->AppendDefines(
@@ -400,8 +395,9 @@ std::string cmExtraSublimeTextGenerator::ComputeDefines(
   std::string defPropName = "COMPILE_DEFINITIONS_";
   defPropName += cmSystemTools::UpperCase(config);
   if (const char* config_compile_defs = source->GetProperty(defPropName)) {
-    lg->AppendDefines(defines, genexInterpreter.Evaluate(config_compile_defs,
-                                                         COMPILE_DEFINITIONS));
+    lg->AppendDefines(
+      defines,
+      genexInterpreter.Evaluate(config_compile_defs, COMPILE_DEFINITIONS));
   }
 
   std::string definesString;
@@ -418,8 +414,8 @@ std::string cmExtraSublimeTextGenerator::ComputeIncludes(
   cmMakefile* makefile = lg->GetMakefile();
   const std::string& language = source->GetLanguage();
   const std::string& config = makefile->GetSafeDefinition("CMAKE_BUILD_TYPE");
-  cmGeneratorExpressionInterpreter genexInterpreter(
-    lg, target, config, target->GetName(), language);
+  cmGeneratorExpressionInterpreter genexInterpreter(lg, config, target,
+                                                    language);
 
   // Add include directories for this source file
   const std::string INCLUDE_DIRECTORIES("INCLUDE_DIRECTORIES");

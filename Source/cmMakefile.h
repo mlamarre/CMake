@@ -18,16 +18,16 @@
 
 #include "cmAlgorithms.h"
 #include "cmListFileCache.h"
+#include "cmMessageType.h"
 #include "cmNewLineStyle.h"
 #include "cmPolicies.h"
 #include "cmSourceFileLocationKind.h"
 #include "cmStateSnapshot.h"
 #include "cmStateTypes.h"
 #include "cmTarget.h"
-#include "cmake.h"
 
 #if defined(CMAKE_BUILD_WITH_CMAKE)
-#include "cmSourceGroup.h"
+#  include "cmSourceGroup.h"
 #endif
 
 class cmCommand;
@@ -46,6 +46,15 @@ class cmState;
 class cmTest;
 class cmTestGenerator;
 class cmVariableWatch;
+class cmake;
+
+/** A type-safe wrapper for a string representing a directory id.  */
+class cmDirectoryId
+{
+public:
+  cmDirectoryId(std::string s);
+  std::string String;
+};
 
 /** \class cmMakefile
  * \brief Process the input CMakeLists.txt file.
@@ -75,11 +84,12 @@ public:
    */
   ~cmMakefile();
 
-  bool ReadListFile(const char* filename);
+  cmDirectoryId GetDirectoryId() const;
 
-  bool ReadDependentFile(const char* filename, bool noPolicyScope = true);
+  bool ReadListFile(const std::string& filename);
 
-  bool ProcessBuildsystemFile(const char* filename);
+  bool ReadDependentFile(const std::string& filename,
+                         bool noPolicyScope = true);
 
   /**
    * Add a function blocker to this makefile
@@ -102,7 +112,8 @@ public:
    */
   int TryCompile(const std::string& srcdir, const std::string& bindir,
                  const std::string& projectName, const std::string& targetName,
-                 bool fast, const std::vector<std::string>* cmakeArgs,
+                 bool fast, int jobs,
+                 const std::vector<std::string>* cmakeArgs,
                  std::string& output);
 
   bool GetIsSourceFileTryCompile() const;
@@ -168,7 +179,10 @@ public:
    */
   void AddDefineFlag(std::string const& definition);
   void RemoveDefineFlag(std::string const& definition);
+  void AddCompileDefinition(std::string const& definition);
   void AddCompileOption(std::string const& option);
+  void AddLinkOption(std::string const& option);
+  void AddLinkDirectory(std::string const& directory, bool before = false);
 
   /** Create a new imported target with the name and type given.  */
   cmTarget* AddImportedTarget(const std::string& name,
@@ -280,12 +294,14 @@ public:
 
   //@{
   /**
-     * Set, Push, Pop policy values for CMake.
-     */
+   * Set, Push, Pop policy values for CMake.
+   */
   bool SetPolicy(cmPolicies::PolicyID id, cmPolicies::PolicyStatus status);
   bool SetPolicy(const char* id, cmPolicies::PolicyStatus status);
-  cmPolicies::PolicyStatus GetPolicyStatus(cmPolicies::PolicyID id) const;
-  bool SetPolicyVersion(const char* version);
+  cmPolicies::PolicyStatus GetPolicyStatus(cmPolicies::PolicyID id,
+                                           bool parent_scope = false) const;
+  bool SetPolicyVersion(std::string const& version_min,
+                        std::string const& version_max);
   void RecordPolicies(cmPolicies::PolicyMap& pm);
   //@}
 
@@ -322,8 +338,8 @@ public:
    */
   void SetArgcArgv(const std::vector<std::string>& args);
 
-  const char* GetCurrentSourceDirectory() const;
-  const char* GetCurrentBinaryDirectory() const;
+  std::string const& GetCurrentSourceDirectory() const;
+  std::string const& GetCurrentBinaryDirectory() const;
 
   //@}
 
@@ -417,8 +433,9 @@ public:
    * cache is then queried.
    */
   const char* GetDefinition(const std::string&) const;
-  const char* GetSafeDefinition(const std::string&) const;
-  const char* GetRequiredDefinition(const std::string& name) const;
+  const std::string* GetDef(const std::string&) const;
+  const std::string& GetSafeDefinition(const std::string&) const;
+  std::string GetRequiredDefinition(const std::string& name) const;
   bool IsDefinitionSet(const std::string&) const;
   /**
    * Get the list of all variables in the current space. If argument
@@ -562,12 +579,11 @@ public:
    * entry in the this->Definitions map.  Also \@var\@ is
    * expanded to match autoconf style expansions.
    */
-  const char* ExpandVariablesInString(std::string& source) const;
-  const char* ExpandVariablesInString(std::string& source, bool escapeQuotes,
-                                      bool noEscapes, bool atOnly = false,
-                                      const char* filename = nullptr,
-                                      long line = -1, bool removeEmpty = false,
-                                      bool replaceAt = false) const;
+  const std::string& ExpandVariablesInString(std::string& source) const;
+  const std::string& ExpandVariablesInString(
+    std::string& source, bool escapeQuotes, bool noEscapes,
+    bool atOnly = false, const char* filename = nullptr, long line = -1,
+    bool removeEmpty = false, bool replaceAt = false) const;
 
   /**
    * Remove any remaining variables in the string. Anything with ${var} or
@@ -673,7 +689,13 @@ public:
   /**
    * Return a location of a file in cmake or custom modules directory
    */
-  std::string GetModulesFile(const char* name) const;
+  std::string GetModulesFile(const std::string& name) const
+  {
+    bool system;
+    return this->GetModulesFile(name, system);
+  }
+
+  std::string GetModulesFile(const std::string& name, bool& system) const;
 
   ///! Set/Get a property of this directory
   void SetProperty(const std::string& prop, const char* value);
@@ -721,6 +743,7 @@ public:
     ~FunctionPushPop();
 
     void Quiet() { this->ReportError = false; }
+
   private:
     cmMakefile* Makefile;
     bool ReportError;
@@ -734,6 +757,7 @@ public:
     ~MacroPushPop();
 
     void Quiet() { this->ReportError = false; }
+
   private:
     cmMakefile* Makefile;
     bool ReportError;
@@ -764,11 +788,12 @@ public:
       this->Makefile->PushScope();
     }
     ~ScopePushPop() { this->Makefile->PopScope(); }
+
   private:
     cmMakefile* Makefile;
   };
 
-  void IssueMessage(cmake::MessageType t, std::string const& text) const;
+  void IssueMessage(MessageType t, std::string const& text) const;
 
   /** Set whether or not to report a CMP0000 violation.  */
   void SetCheckCMP0000(bool b) { this->CheckCMP0000 = b; }
@@ -782,6 +807,10 @@ public:
   cmBacktraceRange GetCompileOptionsBacktraces() const;
   cmStringRange GetCompileDefinitionsEntries() const;
   cmBacktraceRange GetCompileDefinitionsBacktraces() const;
+  cmStringRange GetLinkOptionsEntries() const;
+  cmBacktraceRange GetLinkOptionsBacktraces() const;
+  cmStringRange GetLinkDirectoriesEntries() const;
+  cmBacktraceRange GetLinkDirectoriesBacktraces() const;
 
   std::set<std::string> const& GetSystemIncludeDirectories() const
   {
@@ -832,9 +861,14 @@ public:
   void RemoveExportBuildFileGeneratorCMP0024(cmExportBuildFileGenerator* gen);
   void AddExportBuildFileGenerator(cmExportBuildFileGenerator* gen);
 
-  // Maintain a stack of package names to determine the depth of find modules
-  // we are currently being called with
-  std::deque<std::string> FindPackageModuleStack;
+  // Maintain a stack of package roots to allow nested PACKAGE_ROOT_PATH
+  // searches
+  std::deque<std::vector<std::string>> FindPackageRootPathStack;
+
+  void MaybeWarnCMP0074(std::string const& pkg);
+  void MaybeWarnUninitialized(std::string const& variable,
+                              const char* sourceFilename) const;
+  bool IsProjectFile(const char* filename) const;
 
 protected:
   // add link libraries and directories to the target
@@ -861,6 +895,9 @@ protected:
   typedef std::unordered_map<std::string, SourceFileVec> SourceFileMap;
   SourceFileMap SourceFileSearchIndex;
 
+  // For "Known" paths we can store a direct filename to cmSourceFile map
+  std::unordered_map<std::string, cmSourceFile*> KnownFileSearchIndex;
+
   // Tests
   std::map<std::string, cmTest*> Tests;
 
@@ -878,9 +915,6 @@ protected:
   std::string DefineFlags;
 
   // Track the value of the computed DEFINITIONS property.
-  void AddDefineFlag(std::string const& flag, std::string&);
-  void RemoveDefineFlag(std::string const& flag, std::string::size_type,
-                        std::string&);
   std::string DefineFlagsOrig;
 
 #if defined(CMAKE_BUILD_WITH_CMAKE)
@@ -948,15 +982,18 @@ private:
   friend class BuildsystemFileScope;
 
   // CMP0053 == old
-  cmake::MessageType ExpandVariablesInStringOld(
-    std::string& errorstr, std::string& source, bool escapeQuotes,
-    bool noEscapes, bool atOnly, const char* filename, long line,
-    bool removeEmpty, bool replaceAt) const;
+  MessageType ExpandVariablesInStringOld(std::string& errorstr,
+                                         std::string& source,
+                                         bool escapeQuotes, bool noEscapes,
+                                         bool atOnly, const char* filename,
+                                         long line, bool removeEmpty,
+                                         bool replaceAt) const;
   // CMP0053 == new
-  cmake::MessageType ExpandVariablesInStringNew(
-    std::string& errorstr, std::string& source, bool escapeQuotes,
-    bool noEscapes, bool atOnly, const char* filename, long line,
-    bool removeEmpty, bool replaceAt) const;
+  MessageType ExpandVariablesInStringNew(std::string& errorstr,
+                                         std::string& source,
+                                         bool escapeQuotes, bool noEscapes,
+                                         bool atOnly, const char* filename,
+                                         long line, bool replaceAt) const;
   /**
    * Old version of GetSourceFileWithOutput(const std::string&) kept for
    * backward-compatibility. It implements a linear search and support
@@ -985,7 +1022,7 @@ private:
                             bool& needC99, bool& needC11) const;
   void CheckNeededCxxLanguage(const std::string& feature, bool& needCxx98,
                               bool& needCxx11, bool& needCxx14,
-                              bool& needCxx17) const;
+                              bool& needCxx17, bool& needCxx20) const;
 
   bool HaveCStandardAvailable(cmTarget const* target,
                               const std::string& feature) const;
@@ -998,8 +1035,9 @@ private:
   bool WarnUnused;
   bool CheckSystemVars;
   bool CheckCMP0000;
+  std::set<std::string> WarnedCMP0074;
   bool IsSourceFileTryCompile;
-  mutable bool SuppressWatches;
+  mutable bool SuppressSideEffects;
 };
 
 #endif

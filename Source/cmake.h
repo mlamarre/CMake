@@ -6,6 +6,7 @@
 #include "cmConfigure.h" // IWYU pragma: keep
 
 #include <map>
+#include <memory> // IWYU pragma: keep
 #include <set>
 #include <string>
 #include <unordered_set>
@@ -13,20 +14,22 @@
 
 #include "cmInstalledFile.h"
 #include "cmListFileCache.h"
+#include "cmMessageType.h"
+#include "cmState.h"
 #include "cmStateSnapshot.h"
 #include "cmStateTypes.h"
 
 #if defined(CMAKE_BUILD_WITH_CMAKE)
-#include "cm_jsoncpp_value.h"
+#  include "cm_jsoncpp_value.h"
 #endif
 
 class cmExternalMakefileProjectGeneratorFactory;
+class cmFileAPI;
 class cmFileTimeComparison;
 class cmGlobalGenerator;
 class cmGlobalGeneratorFactory;
 class cmMakefile;
 class cmMessenger;
-class cmState;
 class cmVariableWatch;
 struct cmDocumentationEntry;
 
@@ -66,19 +69,6 @@ public:
     RoleProject   // all commands
   };
 
-  enum MessageType
-  {
-    AUTHOR_WARNING,
-    AUTHOR_ERROR,
-    FATAL_ERROR,
-    INTERNAL_ERROR,
-    MESSAGE,
-    WARNING,
-    LOG,
-    DEPRECATION_ERROR,
-    DEPRECATION_WARNING
-  };
-
   enum DiagLevel
   {
     DIAG_IGNORE,
@@ -114,17 +104,23 @@ public:
     std::string extraName;
     bool supportsToolset;
     bool supportsPlatform;
+    std::vector<std::string> supportedPlatforms;
+    std::string defaultPlatform;
     bool isAlias;
   };
 
   typedef std::map<std::string, cmInstalledFile> InstalledFilesMap;
 
+  static const int NO_BUILD_PARALLEL_LEVEL = -1;
+  static const int DEFAULT_BUILD_PARALLEL_LEVEL = 0;
+
   /// Default constructor
-  cmake(Role role);
+  cmake(Role role, cmState::Mode mode);
   /// Destructor
   ~cmake();
 
 #if defined(CMAKE_BUILD_WITH_CMAKE)
+  Json::Value ReportVersionJson() const;
   Json::Value ReportCapabilitiesJson(bool haveServerMode) const;
 #endif
   std::string ReportCapabilities(bool haveServerMode) const;
@@ -202,7 +198,8 @@ public:
   void SetGlobalGenerator(cmGlobalGenerator*);
 
   ///! Get the names of the current registered generators
-  void GetRegisteredGenerators(std::vector<GeneratorInfo>& generators) const;
+  void GetRegisteredGenerators(std::vector<GeneratorInfo>& generators,
+                               bool includeNamesWithPlatform = true) const;
 
   ///! Set the name of the selected generator-specific instance.
   void SetGeneratorInstance(std::string const& instance)
@@ -255,14 +252,23 @@ public:
   void AddCacheEntry(const std::string& key, const char* value,
                      const char* helpString, int type);
 
+  bool DoWriteGlobVerifyTarget() const;
+  std::string const& GetGlobVerifyScript() const;
+  std::string const& GetGlobVerifyStamp() const;
+  void AddGlobCacheEntry(bool recurse, bool listDirectories,
+                         bool followSymlinks, const std::string& relative,
+                         const std::string& expression,
+                         const std::vector<std::string>& files,
+                         const std::string& variable,
+                         cmListFileBacktrace const& bt);
+
   /**
    * Get the system information and write it to the file specified
    */
   int GetSystemInformation(std::vector<std::string>&);
 
   ///! Parse command line arguments
-  void SetArgs(const std::vector<std::string>&,
-               bool directoriesSetBefore = false);
+  void SetArgs(const std::vector<std::string>& args);
 
   ///! Is this cmake running as a result of a TRY_COMPILE command
   bool GetIsInTryCompile() const;
@@ -284,10 +290,12 @@ public:
   ///! this is called by generators to update the progress
   void UpdateProgress(const char* msg, float prog);
 
+#if defined(CMAKE_BUILD_WITH_CMAKE)
   ///! Get the variable watch object
   cmVariableWatch* GetVariableWatch() { return this->VariableWatch; }
+#endif
 
-  void GetGeneratorDocumentation(std::vector<cmDocumentationEntry>&);
+  std::vector<cmDocumentationEntry> GetGeneratorsDocumentation();
 
   ///! Set/Get a property of this target file
   void SetProperty(const std::string& prop, const char* value);
@@ -416,11 +424,11 @@ public:
 
   /** Display a message to the user.  */
   void IssueMessage(
-    cmake::MessageType t, std::string const& text,
+    MessageType t, std::string const& text,
     cmListFileBacktrace const& backtrace = cmListFileBacktrace()) const;
 
   ///! run the --build option
-  int Build(const std::string& dir, const std::string& target,
+  int Build(int jobs, const std::string& dir, const std::string& target,
             const std::string& config,
             const std::vector<std::string>& nativeOptions, bool clean);
 
@@ -480,8 +488,6 @@ protected:
 
   void GenerateGraphViz(const char* fileName) const;
 
-  cmVariableWatch* VariableWatch;
-
 private:
   ProgressCallbackType ProgressCallback;
   void* ProgressCallbackClientData;
@@ -512,6 +518,11 @@ private:
   std::string GraphVizFile;
   InstalledFilesMap InstalledFiles;
 
+#if defined(CMAKE_BUILD_WITH_CMAKE)
+  cmVariableWatch* VariableWatch;
+  std::unique_ptr<cmFileAPI> FileAPI;
+#endif
+
   cmState* State;
   cmStateSnapshot CurrentSnapshot;
   cmMessenger* Messenger;
@@ -523,24 +534,30 @@ private:
   // Print a list of valid generators to stderr.
   void PrintGeneratorList();
 
+  std::unique_ptr<cmGlobalGenerator> EvaluateDefaultGlobalGenerator();
   void CreateDefaultGlobalGenerator();
+
+  void AppendGlobalGeneratorsDocumentation(std::vector<cmDocumentationEntry>&);
+  void AppendExtraGeneratorsDocumentation(std::vector<cmDocumentationEntry>&);
 
   /**
    * Convert a message type between a warning and an error, based on the state
    * of the error output CMake variables, in the cache.
    */
-  cmake::MessageType ConvertMessageType(cmake::MessageType t) const;
+  MessageType ConvertMessageType(MessageType t) const;
 
   /*
    * Check if messages of this type should be output, based on the state of the
    * warning and error output CMake variables, in the cache.
    */
-  bool IsMessageTypeVisible(cmake::MessageType t) const;
+  bool IsMessageTypeVisible(MessageType t) const;
 };
 
 #define CMAKE_STANDARD_OPTIONS_TABLE                                          \
-  { "-C <initial-cache>", "Pre-load a script to populate the cache." },       \
-    { "-D <var>[:<type>]=<value>", "Create a cmake cache entry." },           \
+  { "-S <path-to-source>", "Explicitly specify a source directory." },        \
+    { "-B <path-to-build>", "Explicitly specify a build directory." },        \
+    { "-C <initial-cache>", "Pre-load a script to populate the cache." },     \
+    { "-D <var>[:<type>]=<value>", "Create or update a cmake cache entry." }, \
     { "-U <globbing_expr>", "Remove matching entries from CMake cache." },    \
     { "-G <generator-name>", "Specify a build system generator." },           \
     { "-T <toolset-name>",                                                    \
@@ -553,11 +570,13 @@ private:
     { "-Wno-error=dev", "Make developer warnings not errors." },              \
     { "-Wdeprecated", "Enable deprecation warnings." },                       \
     { "-Wno-deprecated", "Suppress deprecation warnings." },                  \
-    { "-Werror=deprecated", "Make deprecated macro and function warnings "    \
-                            "errors." },                                      \
+    { "-Werror=deprecated",                                                   \
+      "Make deprecated macro and function warnings "                          \
+      "errors." },                                                            \
   {                                                                           \
-    "-Wno-error=deprecated", "Make deprecated macro and function warnings "   \
-                             "not errors."                                    \
+    "-Wno-error=deprecated",                                                  \
+      "Make deprecated macro and function warnings "                          \
+      "not errors."                                                           \
   }
 
 #define FOR_EACH_C_FEATURE(F)                                                 \
@@ -574,6 +593,7 @@ private:
   F(cxx_std_11)                                                               \
   F(cxx_std_14)                                                               \
   F(cxx_std_17)                                                               \
+  F(cxx_std_20)                                                               \
   F(cxx_aggregate_default_initializers)                                       \
   F(cxx_alias_templates)                                                      \
   F(cxx_alignas)                                                              \

@@ -70,8 +70,9 @@ std::string cmCTestGIT::GetWorkingRevision()
 bool cmCTestGIT::NoteOldRevision()
 {
   this->OldRevision = this->GetWorkingRevision();
-  cmCTestLog(this->CTest, HANDLER_OUTPUT, "   Old revision of repository is: "
-               << this->OldRevision << "\n");
+  cmCTestLog(this->CTest, HANDLER_OUTPUT,
+             "   Old revision of repository is: " << this->OldRevision
+                                                  << "\n");
   this->PriorRev.Rev = this->OldRevision;
   return true;
 }
@@ -79,8 +80,9 @@ bool cmCTestGIT::NoteOldRevision()
 bool cmCTestGIT::NoteNewRevision()
 {
   this->NewRevision = this->GetWorkingRevision();
-  cmCTestLog(this->CTest, HANDLER_OUTPUT, "   New revision of repository is: "
-               << this->NewRevision << "\n");
+  cmCTestLog(this->CTest, HANDLER_OUTPUT,
+             "   New revision of repository is: " << this->NewRevision
+                                                  << "\n");
   return true;
 }
 
@@ -270,7 +272,7 @@ bool cmCTestGIT::UpdateImpl()
 
   std::string init_submodules =
     this->CTest->GetCTestConfiguration("GITInitSubmodules");
-  if (cmSystemTools::IsOn(init_submodules.c_str())) {
+  if (cmSystemTools::IsOn(init_submodules)) {
     char const* git_submodule_init[] = { git, "submodule", "init", nullptr };
     ret = this->RunChild(git_submodule_init, &submodule_out, &submodule_err,
                          top_dir.c_str());
@@ -473,15 +475,9 @@ private:
   {
     std::string Name;
     std::string EMail;
-    unsigned long Time;
-    long TimeZone;
-    Person()
-      : Name()
-      , EMail()
-      , Time(0)
-      , TimeZone(0)
-    {
-    }
+    unsigned long Time = 0;
+    long TimeZone = 0;
+    Person() {}
   };
 
   void ParsePerson(const char* str, Person& person)
@@ -616,8 +612,8 @@ bool cmCTestGIT::LoadRevisions()
     git,  "diff-tree",    "--stdin",          "--always", "-z",
     "-r", "--pretty=raw", "--encoding=utf-8", nullptr
   };
-  this->Log << this->ComputeCommandLine(git_rev_list) << " | "
-            << this->ComputeCommandLine(git_diff_tree) << "\n";
+  this->Log << cmCTestGIT::ComputeCommandLine(git_rev_list) << " | "
+            << cmCTestGIT::ComputeCommandLine(git_diff_tree) << "\n";
 
   cmsysProcess* cp = cmsysProcess_New();
   cmsysProcess_AddCommand(cp, git_rev_list);
@@ -626,7 +622,7 @@ bool cmCTestGIT::LoadRevisions()
 
   CommitParser out(this, "dt-out> ");
   OutputLogger err(this->Log, "dt-err> ");
-  this->RunProcess(cp, &out, &err, cmProcessOutput::UTF8);
+  cmCTestGIT::RunProcess(cp, &out, &err, cmProcessOutput::UTF8);
 
   // Send one extra zero-byte to terminate the last record.
   out.Process("", 1);

@@ -23,9 +23,9 @@
 #include "cmsys/SystemTools.hxx"
 
 #ifdef _WIN32
-#include <rpc.h> // for GUID generation (windows only)
+#  include <rpc.h> // for GUID generation (windows only)
 #else
-#include <uuid/uuid.h> // for GUID generation (libuuid)
+#  include <uuid/uuid.h> // for GUID generation (libuuid)
 #endif
 
 #include "cmCMakeToWixPath.h"
@@ -55,8 +55,8 @@ bool cmCPackWIXGenerator::RunWiXCommand(std::string const& command)
 {
   std::string logFileName = this->CPackTopLevel + "/wix.log";
 
-  cmCPackLogger(cmCPackLog::LOG_DEBUG, "Running WiX command: " << command
-                                                               << std::endl);
+  cmCPackLogger(cmCPackLog::LOG_DEBUG,
+                "Running WiX command: " << command << std::endl);
 
   std::string output;
 
@@ -71,8 +71,9 @@ bool cmCPackWIXGenerator::RunWiXCommand(std::string const& command)
   logFile.close();
 
   if (!status || returnValue) {
-    cmCPackLogger(cmCPackLog::LOG_ERROR, "Problem running WiX candle. "
-                                         "Please check '"
+    cmCPackLogger(cmCPackLog::LOG_ERROR,
+                  "Problem running WiX candle. "
+                  "Please check '"
                     << logFileName << "' for errors." << std::endl);
 
     return false;
@@ -97,6 +98,10 @@ bool cmCPackWIXGenerator::RunCandleCommand(std::string const& sourceFile,
 
   for (std::string const& ext : CandleExtensions) {
     command << " -ext " << QuotePath(ext);
+  }
+
+  if (sourceFile.rfind(this->CPackTopLevel, 0) != 0) {
+    command << " " << QuotePath("-I" + this->CPackTopLevel);
   }
 
   AddCustomFlags("CPACK_WIX_CANDLE_EXTRA_FLAGS", command);
@@ -137,8 +142,8 @@ bool cmCPackWIXGenerator::RunLightCommand(std::string const& objectFiles)
 int cmCPackWIXGenerator::PackageFiles()
 {
   if (!PackageFilesImpl() || cmSystemTools::GetErrorOccuredFlag()) {
-    cmCPackLogger(cmCPackLog::LOG_ERROR, "Fatal WiX Generator Error"
-                    << std::endl);
+    cmCPackLogger(cmCPackLog::LOG_ERROR,
+                  "Fatal WiX Generator Error" << std::endl);
     return false;
   }
 
@@ -147,9 +152,9 @@ int cmCPackWIXGenerator::PackageFiles()
 
 bool cmCPackWIXGenerator::InitializeWiXConfiguration()
 {
-  if (!ReadListFile("CPackWIX.cmake")) {
-    cmCPackLogger(cmCPackLog::LOG_ERROR, "Error while executing CPackWIX.cmake"
-                    << std::endl);
+  if (!ReadListFile("Internal/CPack/CPackWIX.cmake")) {
+    cmCPackLogger(cmCPackLog::LOG_ERROR,
+                  "Error while executing CPackWIX.cmake" << std::endl);
     return false;
   }
 
@@ -166,12 +171,13 @@ bool cmCPackWIXGenerator::InitializeWiXConfiguration()
     std::string guid = GenerateGUID();
     SetOption("CPACK_WIX_UPGRADE_GUID", guid.c_str());
 
-    cmCPackLogger(
-      cmCPackLog::LOG_WARNING, "CPACK_WIX_UPGRADE_GUID implicitly set to "
-        << guid << " . "
-                   "Please refer to the documentation on how and why "
-                   "you might want to set this explicitly."
-        << std::endl);
+    cmCPackLogger(cmCPackLog::LOG_WARNING,
+                  "CPACK_WIX_UPGRADE_GUID implicitly set to "
+                    << guid
+                    << " . "
+                       "Please refer to the documentation on how and why "
+                       "you might want to set this explicitly."
+                    << std::endl);
   }
 
   if (!RequireOption("CPACK_TOPLEVEL_DIRECTORY", this->CPackTopLevel)) {
@@ -370,8 +376,9 @@ void cmCPackWIXGenerator::CreateWiXPropertiesIncludeFile()
     includeFile.AddAttribute("Id", "FindInstallLocation");
     includeFile.AddAttribute("Root", "HKLM");
     includeFile.AddAttribute(
-      "Key", "Software\\Microsoft\\Windows\\"
-             "CurrentVersion\\Uninstall\\[WIX_UPGRADE_DETECTED]");
+      "Key",
+      "Software\\Microsoft\\Windows\\"
+      "CurrentVersion\\Uninstall\\[WIX_UPGRADE_DETECTED]");
     includeFile.AddAttribute("Name", "InstallLocation");
     includeFile.AddAttribute("Type", "raw");
     includeFile.EndElement("RegistrySearch");
@@ -613,8 +620,9 @@ bool cmCPackWIXGenerator::GenerateMainSourceFileFromTemplate()
   std::string mainSourceFilePath = this->CPackTopLevel + "/main.wxs";
 
   if (!ConfigureFile(wixTemplate.c_str(), mainSourceFilePath.c_str())) {
-    cmCPackLogger(cmCPackLog::LOG_ERROR, "Failed creating '"
-                    << mainSourceFilePath << "'' from template." << std::endl);
+    cmCPackLogger(cmCPackLog::LOG_ERROR,
+                  "Failed creating '" << mainSourceFilePath
+                                      << "'' from template." << std::endl);
 
     return false;
   }
@@ -957,8 +965,8 @@ bool cmCPackWIXGenerator::RequireOption(std::string const& name,
 
     return true;
   } else {
-    cmCPackLogger(cmCPackLog::LOG_ERROR, "Required variable "
-                    << name << " not set" << std::endl);
+    cmCPackLogger(cmCPackLog::LOG_ERROR,
+                  "Required variable " << name << " not set" << std::endl);
 
     return false;
   }

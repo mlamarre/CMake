@@ -101,8 +101,12 @@ bool addFilesToItsSourceGroups(const std::string& root,
       tokenizedPath = tokenizePath(sgFilesPath);
     }
 
-    if (tokenizedPath.size() > 1) {
+    if (!tokenizedPath.empty()) {
       tokenizedPath.pop_back();
+
+      if (tokenizedPath.empty()) {
+        tokenizedPath.emplace_back();
+      }
 
       sg = makefile.GetOrCreateSourceGroup(tokenizedPath);
 
@@ -250,16 +254,12 @@ bool cmSourceGroupCommand::InitialPass(std::vector<std::string> const& args,
 bool cmSourceGroupCommand::checkArgumentsPreconditions(
   const ParsedArguments& parsedArguments, std::string& errorMsg) const
 {
-  if (!checkSingleParameterArgumentPreconditions(kPrefixOptionName,
-                                                 parsedArguments, errorMsg) ||
-      !checkSingleParameterArgumentPreconditions(kTreeOptionName,
-                                                 parsedArguments, errorMsg) ||
-      !checkSingleParameterArgumentPreconditions(kRegexOptionName,
-                                                 parsedArguments, errorMsg)) {
-    return false;
-  }
-
-  return true;
+  return checkSingleParameterArgumentPreconditions(
+           kPrefixOptionName, parsedArguments, errorMsg) &&
+    checkSingleParameterArgumentPreconditions(kTreeOptionName, parsedArguments,
+                                              errorMsg) &&
+    checkSingleParameterArgumentPreconditions(kRegexOptionName,
+                                              parsedArguments, errorMsg);
 }
 
 bool cmSourceGroupCommand::processTree(ParsedArguments& parsedArguments,
@@ -282,12 +282,8 @@ bool cmSourceGroupCommand::processTree(ParsedArguments& parsedArguments,
   std::set<std::string> sourceGroupPaths =
     getSourceGroupFilesPaths(root, filesVector);
 
-  if (!addFilesToItsSourceGroups(root, sourceGroupPaths, prefix,
-                                 *(this->Makefile), errorMsg)) {
-    return false;
-  }
-
-  return true;
+  return addFilesToItsSourceGroups(root, sourceGroupPaths, prefix,
+                                   *(this->Makefile), errorMsg);
 }
 
 bool cmSourceGroupCommand::checkSingleParameterArgumentPreconditions(

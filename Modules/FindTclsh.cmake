@@ -1,23 +1,24 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
 # file Copyright.txt or https://cmake.org/licensing for details.
 
-#.rst:
-# FindTclsh
-# ---------
-#
-# Find tclsh
-#
-# This module finds if TCL is installed and determines where the include
-# files and libraries are.  It also determines what the name of the
-# library is.  This code sets the following variables:
-#
-# ::
-#
-#   TCLSH_FOUND = TRUE if tclsh has been found
-#   TCL_TCLSH = the path to the tclsh executable
-#
-# In cygwin, look for the cygwin version first.  Don't look for it later
-# to avoid finding the cygwin version on a Win32 build.
+#[=======================================================================[.rst:
+FindTclsh
+---------
+
+Find tclsh
+
+This module finds if TCL is installed and determines where the include
+files and libraries are.  It also determines what the name of the
+library is.  This code sets the following variables:
+
+::
+
+  TCLSH_FOUND = TRUE if tclsh has been found
+  TCL_TCLSH = the path to the tclsh executable
+
+In cygwin, look for the cygwin version first.  Don't look for it later
+to avoid finding the cygwin version on a Win32 build.
+#]=======================================================================]
 
 if(CYGWIN)
   find_program(TCL_TCLSH NAMES cygtclsh83 cygtclsh80)
@@ -68,6 +69,7 @@ endif()
 set(TCL_TCLSH_NAMES
   tclsh
   tclsh${TCL_LIBRARY_VERSION} tclsh${TK_LIBRARY_VERSION} tclsh${TK_WISH_VERSION}
+  tclsh87 tclsh8.7
   tclsh86 tclsh8.6
   tclsh85 tclsh8.5
   tclsh84 tclsh8.4

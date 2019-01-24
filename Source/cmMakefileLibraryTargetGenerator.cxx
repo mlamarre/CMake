@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <memory> // IWYU pragma: keep
 #include <sstream>
+#include <stddef.h>
+#include <utility>
 #include <vector>
 
 #include "cmGeneratedFileStream.h"
@@ -136,10 +138,7 @@ void cmMakefileLibraryTargetGenerator::WriteStaticLibraryRules()
     this->GeneratorTarget->GetPropertyAsBool("CUDA_RESOLVE_DEVICE_SYMBOLS");
   if (hasCUDA && resolveDeviceSymbols) {
     std::string linkRuleVar = "CMAKE_CUDA_DEVICE_LINK_LIBRARY";
-    std::string extraFlags;
-    this->LocalGenerator->AppendFlags(
-      extraFlags, this->GeneratorTarget->GetProperty("LINK_FLAGS"));
-    this->WriteDeviceLibraryRules(linkRuleVar, extraFlags, false);
+    this->WriteDeviceLibraryRules(linkRuleVar, false);
   }
 
   std::string linkLanguage =
@@ -150,7 +149,7 @@ void cmMakefileLibraryTargetGenerator::WriteStaticLibraryRules()
 
   std::string extraFlags;
   this->LocalGenerator->GetStaticLibraryFlags(
-    extraFlags, cmSystemTools::UpperCase(this->ConfigName),
+    extraFlags, cmSystemTools::UpperCase(this->ConfigName), linkLanguage,
     this->GeneratorTarget);
   this->WriteLibraryRules(linkRuleVar, extraFlags, false);
 }
@@ -172,10 +171,7 @@ void cmMakefileLibraryTargetGenerator::WriteSharedLibraryRules(bool relink)
                  cuda_lang) != closure->Languages.end());
     if (hasCUDA) {
       std::string linkRuleVar = "CMAKE_CUDA_DEVICE_LINK_LIBRARY";
-      std::string extraFlags;
-      this->LocalGenerator->AppendFlags(
-        extraFlags, this->GeneratorTarget->GetProperty("LINK_FLAGS"));
-      this->WriteDeviceLibraryRules(linkRuleVar, extraFlags, relink);
+      this->WriteDeviceLibraryRules(linkRuleVar, relink);
     }
   }
 
@@ -186,13 +182,7 @@ void cmMakefileLibraryTargetGenerator::WriteSharedLibraryRules(bool relink)
   linkRuleVar += "_CREATE_SHARED_LIBRARY";
 
   std::string extraFlags;
-  this->LocalGenerator->AppendFlags(
-    extraFlags, this->GeneratorTarget->GetProperty("LINK_FLAGS"));
-  std::string linkFlagsConfig = "LINK_FLAGS_";
-  linkFlagsConfig += cmSystemTools::UpperCase(this->ConfigName);
-  this->LocalGenerator->AppendFlags(
-    extraFlags, this->GeneratorTarget->GetProperty(linkFlagsConfig));
-
+  this->GetTargetLinkFlags(extraFlags, linkLanguage);
   this->LocalGenerator->AddConfigVariableFlags(
     extraFlags, "CMAKE_SHARED_LINKER_FLAGS", this->ConfigName);
 
@@ -222,10 +212,7 @@ void cmMakefileLibraryTargetGenerator::WriteModuleLibraryRules(bool relink)
                  cuda_lang) != closure->Languages.end());
     if (hasCUDA) {
       std::string linkRuleVar = "CMAKE_CUDA_DEVICE_LINK_LIBRARY";
-      std::string extraFlags;
-      this->LocalGenerator->AppendFlags(
-        extraFlags, this->GeneratorTarget->GetProperty("LINK_FLAGS"));
-      this->WriteDeviceLibraryRules(linkRuleVar, extraFlags, relink);
+      this->WriteDeviceLibraryRules(linkRuleVar, relink);
     }
   }
 
@@ -236,12 +223,7 @@ void cmMakefileLibraryTargetGenerator::WriteModuleLibraryRules(bool relink)
   linkRuleVar += "_CREATE_SHARED_MODULE";
 
   std::string extraFlags;
-  this->LocalGenerator->AppendFlags(
-    extraFlags, this->GeneratorTarget->GetProperty("LINK_FLAGS"));
-  std::string linkFlagsConfig = "LINK_FLAGS_";
-  linkFlagsConfig += cmSystemTools::UpperCase(this->ConfigName);
-  this->LocalGenerator->AppendFlags(
-    extraFlags, this->GeneratorTarget->GetProperty(linkFlagsConfig));
+  this->GetTargetLinkFlags(extraFlags, linkLanguage);
   this->LocalGenerator->AddConfigVariableFlags(
     extraFlags, "CMAKE_MODULE_LINKER_FLAGS", this->ConfigName);
 
@@ -264,12 +246,7 @@ void cmMakefileLibraryTargetGenerator::WriteFrameworkRules(bool relink)
   linkRuleVar += "_CREATE_MACOSX_FRAMEWORK";
 
   std::string extraFlags;
-  this->LocalGenerator->AppendFlags(
-    extraFlags, this->GeneratorTarget->GetProperty("LINK_FLAGS"));
-  std::string linkFlagsConfig = "LINK_FLAGS_";
-  linkFlagsConfig += cmSystemTools::UpperCase(this->ConfigName);
-  this->LocalGenerator->AppendFlags(
-    extraFlags, this->GeneratorTarget->GetProperty(linkFlagsConfig));
+  this->GetTargetLinkFlags(extraFlags, linkLanguage);
   this->LocalGenerator->AddConfigVariableFlags(
     extraFlags, "CMAKE_MACOSX_FRAMEWORK_LINKER_FLAGS", this->ConfigName);
 
@@ -277,25 +254,25 @@ void cmMakefileLibraryTargetGenerator::WriteFrameworkRules(bool relink)
 }
 
 void cmMakefileLibraryTargetGenerator::WriteDeviceLibraryRules(
-  const std::string& linkRuleVar, const std::string& extraFlags, bool relink)
+  const std::string& linkRuleVar, bool relink)
 {
 #ifdef CMAKE_BUILD_WITH_CMAKE
   // TODO: Merge the methods that call this method to avoid
   // code duplication.
   std::vector<std::string> commands;
 
-  // Build list of dependencies.
-  std::vector<std::string> depends;
-  this->AppendLinkDepends(depends);
-
   // Get the language to use for linking this library.
   std::string linkLanguage = "CUDA";
   std::string const objExt =
     this->Makefile->GetSafeDefinition("CMAKE_CUDA_OUTPUT_EXTENSION");
 
+  // Build list of dependencies.
+  std::vector<std::string> depends;
+  this->AppendLinkDepends(depends, linkLanguage);
+
   // Create set of linking flags.
   std::string linkFlags;
-  this->LocalGenerator->AppendFlags(linkFlags, extraFlags);
+  this->GetTargetLinkFlags(linkFlags, linkLanguage);
 
   // Get the name of the device object to generate.
   std::string const targetOutputReal =
@@ -457,7 +434,6 @@ void cmMakefileLibraryTargetGenerator::WriteDeviceLibraryRules(
   this->WriteTargetDriverRule(targetOutputReal, relink);
 #else
   static_cast<void>(linkRuleVar);
-  static_cast<void>(extraFlags);
   static_cast<void>(relink);
 #endif
 }
@@ -469,13 +445,6 @@ void cmMakefileLibraryTargetGenerator::WriteLibraryRules(
   // code duplication.
   std::vector<std::string> commands;
 
-  // Build list of dependencies.
-  std::vector<std::string> depends;
-  this->AppendLinkDepends(depends);
-  if (!this->DeviceLinkObject.empty()) {
-    depends.push_back(this->DeviceLinkObject);
-  }
-
   // Get the language to use for linking this library.
   std::string linkLanguage =
     this->GeneratorTarget->GetLinkerLanguage(this->ConfigName);
@@ -485,6 +454,13 @@ void cmMakefileLibraryTargetGenerator::WriteLibraryRules(
     cmSystemTools::Error("Cannot determine link language for target \"",
                          this->GeneratorTarget->GetName().c_str(), "\".");
     return;
+  }
+
+  // Build list of dependencies.
+  std::vector<std::string> depends;
+  this->AppendLinkDepends(depends, linkLanguage);
+  if (!this->DeviceLinkObject.empty()) {
+    depends.push_back(this->DeviceLinkObject);
   }
 
   // Create set of linking flags.
@@ -641,8 +617,8 @@ void cmMakefileLibraryTargetGenerator::WriteLibraryRules(
       this->LocalGenerator->GetCurrentBinaryDirectory(),
       targetFullPathImport));
     std::string implib;
-    if (this->GeneratorTarget->GetImplibGNUtoMS(targetFullPathImport,
-                                                implib)) {
+    if (this->GeneratorTarget->GetImplibGNUtoMS(
+          this->ConfigName, targetFullPathImport, implib)) {
       libCleanFiles.push_back(this->LocalGenerator->MaybeConvertToRelativePath(
         this->LocalGenerator->GetCurrentBinaryDirectory(), implib));
     }
@@ -660,7 +636,7 @@ void cmMakefileLibraryTargetGenerator::WriteLibraryRules(
   if (this->GeneratorTarget->GetType() != cmStateEnums::STATIC_LIBRARY) {
     libCleanFiles.push_back(this->LocalGenerator->MaybeConvertToRelativePath(
       this->LocalGenerator->GetCurrentBinaryDirectory(),
-      (targetFullPath + ".manifest").c_str()));
+      targetFullPath + ".manifest"));
   }
 #endif
 
@@ -732,10 +708,14 @@ void cmMakefileLibraryTargetGenerator::WriteLibraryRules(
     // Archiving rules never use a response file.
     useResponseFileForObjects = false;
 
-    // Limit the length of individual object lists to less than the
-    // 32K command line length limit on Windows.  We could make this a
-    // platform file variable but this should work everywhere.
-    archiveCommandLimit = 30000;
+    // Limit the length of individual object lists to less than half of
+    // the command line length limit (leaving half for other flags).
+    // This may result in several calls to the archiver.
+    if (size_t limit = cmSystemTools::CalculateCommandLineLengthLimit()) {
+      archiveCommandLimit = limit / 2;
+    } else {
+      archiveCommandLimit = 8000;
+    }
   }
 
   // Expand the rule variables.

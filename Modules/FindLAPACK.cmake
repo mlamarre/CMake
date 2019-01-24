@@ -1,48 +1,49 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
 # file Copyright.txt or https://cmake.org/licensing for details.
 
-#.rst:
-# FindLAPACK
-# ----------
-#
-# Find LAPACK library
-#
-# This module finds an installed fortran library that implements the
-# LAPACK linear-algebra interface (see http://www.netlib.org/lapack/).
-#
-# The approach follows that taken for the autoconf macro file,
-# acx_lapack.m4 (distributed at
-# http://ac-archive.sourceforge.net/ac-archive/acx_lapack.html).
-#
-# This module sets the following variables:
-#
-# ::
-#
-#   LAPACK_FOUND - set to true if a library implementing the LAPACK interface
-#     is found
-#   LAPACK_LINKER_FLAGS - uncached list of required linker flags (excluding -l
-#     and -L).
-#   LAPACK_LIBRARIES - uncached list of libraries (using full path name) to
-#     link against to use LAPACK
-#   LAPACK95_LIBRARIES - uncached list of libraries (using full path name) to
-#     link against to use LAPACK95
-#   LAPACK95_FOUND - set to true if a library implementing the LAPACK f95
-#     interface is found
-#   BLA_STATIC  if set on this determines what kind of linkage we do (static)
-#   BLA_VENDOR  if set checks only the specified vendor, if not set checks
-#      all the possibilities
-#   BLA_F95     if set on tries to find the f95 interfaces for BLAS/LAPACK
-#
-# List of vendors (BLA_VENDOR) valid in this module:
-#
-# * Intel(mkl)
-# * OpenBLAS
-# * FLAME
-# * ACML
-# * Apple
-# * NAS
-# * Generic
-#
+#[=======================================================================[.rst:
+FindLAPACK
+----------
+
+Find LAPACK library
+
+This module finds an installed fortran library that implements the
+LAPACK linear-algebra interface (see http://www.netlib.org/lapack/).
+
+The approach follows that taken for the autoconf macro file,
+acx_lapack.m4 (distributed at
+http://ac-archive.sourceforge.net/ac-archive/acx_lapack.html).
+
+This module sets the following variables:
+
+::
+
+  LAPACK_FOUND - set to true if a library implementing the LAPACK interface
+    is found
+  LAPACK_LINKER_FLAGS - uncached list of required linker flags (excluding -l
+    and -L).
+  LAPACK_LIBRARIES - uncached list of libraries (using full path name) to
+    link against to use LAPACK
+  LAPACK95_LIBRARIES - uncached list of libraries (using full path name) to
+    link against to use LAPACK95
+  LAPACK95_FOUND - set to true if a library implementing the LAPACK f95
+    interface is found
+  BLA_STATIC  if set on this determines what kind of linkage we do (static)
+  BLA_VENDOR  if set checks only the specified vendor, if not set checks
+     all the possibilities
+  BLA_F95     if set on tries to find the f95 interfaces for BLAS/LAPACK
+
+List of vendors (BLA_VENDOR) valid in this module:
+
+* Intel(mkl)
+* OpenBLAS
+* FLAME
+* ACML
+* Apple
+* NAS
+* Generic
+
+#]=======================================================================]
 
 set(_lapack_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES})
 
@@ -95,6 +96,9 @@ if (NOT _libdir)
     set(_libdir ENV LD_LIBRARY_PATH)
   endif ()
 endif ()
+
+list(APPEND _libdir "${CMAKE_C_IMPLICIT_LINK_DIRECTORIES}")
+
 foreach(_library ${_list})
   set(_combined_name ${_combined_name}_${_library})
 
@@ -173,6 +177,84 @@ if(BLAS_FOUND)
       set(BLA_VENDOR "All")
     endif()
   endif ()
+
+#intel lapack
+if (BLA_VENDOR MATCHES "Intel" OR BLA_VENDOR STREQUAL "All")
+  if (NOT WIN32)
+    set(LAPACK_mkl_LM "-lm")
+    set(LAPACK_mkl_LDL "-ldl")
+  endif ()
+  if (CMAKE_C_COMPILER_LOADED OR CMAKE_CXX_COMPILER_LOADED)
+    if(LAPACK_FIND_QUIETLY OR NOT LAPACK_FIND_REQUIRED)
+      find_PACKAGE(Threads)
+    else()
+      find_package(Threads REQUIRED)
+    endif()
+
+    if (BLA_VENDOR MATCHES "_64ilp")
+      set(LAPACK_mkl_ILP_MODE "ilp64")
+    else ()
+      set(LAPACK_mkl_ILP_MODE "lp64")
+    endif ()
+
+    set(LAPACK_SEARCH_LIBS "")
+
+    if (BLA_F95)
+      set(LAPACK_mkl_SEARCH_SYMBOL "cheev_f95")
+      set(_LIBRARIES LAPACK95_LIBRARIES)
+      set(_BLAS_LIBRARIES ${BLAS95_LIBRARIES})
+
+      # old
+      list(APPEND LAPACK_SEARCH_LIBS
+        "mkl_lapack95")
+      # new >= 10.3
+      list(APPEND LAPACK_SEARCH_LIBS
+        "mkl_intel_c")
+      list(APPEND LAPACK_SEARCH_LIBS
+        "mkl_lapack95_${LAPACK_mkl_ILP_MODE}")
+    else()
+      set(LAPACK_mkl_SEARCH_SYMBOL "cheev")
+      set(_LIBRARIES LAPACK_LIBRARIES)
+      set(_BLAS_LIBRARIES ${BLAS_LIBRARIES})
+
+      # old
+      list(APPEND LAPACK_SEARCH_LIBS
+        "mkl_lapack")
+    endif()
+
+    # First try empty lapack libs
+    if (NOT ${_LIBRARIES})
+      check_lapack_libraries(
+        ${_LIBRARIES}
+        LAPACK
+        ${LAPACK_mkl_SEARCH_SYMBOL}
+        ""
+        ""
+        "${_BLAS_LIBRARIES}"
+        ""
+        )
+    endif ()
+    # Then try the search libs
+    foreach (IT ${LAPACK_SEARCH_LIBS})
+      if (NOT ${_LIBRARIES})
+        check_lapack_libraries(
+          ${_LIBRARIES}
+          LAPACK
+          ${LAPACK_mkl_SEARCH_SYMBOL}
+          ""
+          "${IT}"
+          "${_BLAS_LIBRARIES}"
+          "${CMAKE_THREAD_LIBS_INIT};${LAPACK_mkl_LM};${LAPACK_mkl_LDL}"
+          )
+      endif ()
+    endforeach ()
+
+    unset(LAPACK_mkl_ILP_MODE)
+    unset(LAPACK_mkl_SEARCH_SYMBOL)
+    unset(LAPACK_mkl_LM)
+    unset(LAPACK_mkl_LDL)
+  endif ()
+endif()
 
 if (BLA_VENDOR STREQUAL "Goto" OR BLA_VENDOR STREQUAL "All")
  if(NOT LAPACK_LIBRARIES)
@@ -266,6 +348,7 @@ if (BLA_VENDOR STREQUAL "Generic" OR
     )
   endif ()
 endif ()
+<<<<<<< HEAD
 #intel lapack
 if (BLA_VENDOR MATCHES "Intel" OR BLA_VENDOR STREQUAL "All")
   if (NOT WIN32)
@@ -337,6 +420,9 @@ if (BLA_VENDOR MATCHES "Intel" OR BLA_VENDOR STREQUAL "All")
     endforeach ()
   endif ()
 endif()
+=======
+
+>>>>>>> upstream/master
 else()
   message(STATUS "LAPACK requires BLAS")
 endif()

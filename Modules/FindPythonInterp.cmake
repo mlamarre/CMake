@@ -1,46 +1,51 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
 # file Copyright.txt or https://cmake.org/licensing for details.
 
-#.rst:
-# FindPythonInterp
-# ----------------
-#
-# Find python interpreter
-#
-# This module finds if Python interpreter is installed and determines
-# where the executables are.  This code sets the following variables:
-#
-# ::
-#
-#   PYTHONINTERP_FOUND         - Was the Python executable found
-#   PYTHON_EXECUTABLE          - path to the Python interpreter
-#
-#
-#
-# ::
-#
-#   PYTHON_VERSION_STRING      - Python version found e.g. 2.5.2
-#   PYTHON_VERSION_MAJOR       - Python major version found e.g. 2
-#   PYTHON_VERSION_MINOR       - Python minor version found e.g. 5
-#   PYTHON_VERSION_PATCH       - Python patch version found e.g. 2
-#
-#
-#
-# The Python_ADDITIONAL_VERSIONS variable can be used to specify a list
-# of version numbers that should be taken into account when searching
-# for Python.  You need to set this variable before calling
-# find_package(PythonInterp).
-#
-# If calling both ``find_package(PythonInterp)`` and
-# ``find_package(PythonLibs)``, call ``find_package(PythonInterp)`` first to
-# get the currently active Python version by default with a consistent version
-# of PYTHON_LIBRARIES.
+#[=======================================================================[.rst:
+FindPythonInterp
+----------------
+
+.. deprecated:: 3.12
+
+  Use :module:`FindPython3`, :module:`FindPython2` or :module:`FindPython` instead.
+
+Find python interpreter
+
+This module finds if Python interpreter is installed and determines
+where the executables are.  This code sets the following variables:
+
+::
+
+  PYTHONINTERP_FOUND         - Was the Python executable found
+  PYTHON_EXECUTABLE          - path to the Python interpreter
+
+
+
+::
+
+  PYTHON_VERSION_STRING      - Python version found e.g. 2.5.2
+  PYTHON_VERSION_MAJOR       - Python major version found e.g. 2
+  PYTHON_VERSION_MINOR       - Python minor version found e.g. 5
+  PYTHON_VERSION_PATCH       - Python patch version found e.g. 2
+
+
+
+The Python_ADDITIONAL_VERSIONS variable can be used to specify a list
+of version numbers that should be taken into account when searching
+for Python.  You need to set this variable before calling
+find_package(PythonInterp).
+
+If calling both ``find_package(PythonInterp)`` and
+``find_package(PythonLibs)``, call ``find_package(PythonInterp)`` first to
+get the currently active Python version by default with a consistent version
+of PYTHON_LIBRARIES.
+#]=======================================================================]
 
 unset(_Python_NAMES)
 
 set(_PYTHON1_VERSIONS 1.6 1.5)
 set(_PYTHON2_VERSIONS 2.7 2.6 2.5 2.4 2.3 2.2 2.1 2.0)
-set(_PYTHON3_VERSIONS 3.7 3.6 3.5 3.4 3.3 3.2 3.1 3.0)
+set(_PYTHON3_VERSIONS 3.8 3.7 3.6 3.5 3.4 3.3 3.2 3.1 3.0)
 
 if(PythonInterp_FIND_VERSION)
     if(PythonInterp_FIND_VERSION_COUNT GREATER 1)

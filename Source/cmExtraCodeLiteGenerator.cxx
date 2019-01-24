@@ -21,9 +21,7 @@
 #include <utility>
 
 cmExtraCodeLiteGenerator::cmExtraCodeLiteGenerator()
-  : cmExternalMakefileProjectGenerator()
-  , ConfigName("NoConfig")
-  , CpuCount(2)
+  : ConfigName("NoConfig")
 {
 }
 
@@ -61,23 +59,22 @@ void cmExtraCodeLiteGenerator::Generate()
   // and extract the information for creating the worspace
   // root makefile
   for (auto const& it : projectMap) {
-    const cmMakefile* mf = it.second[0]->GetMakefile();
+    cmLocalGenerator* lg = it.second[0];
+    const cmMakefile* mf = lg->GetMakefile();
     this->ConfigName = GetConfigurationName(mf);
 
-    if (it.second[0]->GetCurrentBinaryDirectory() ==
-        it.second[0]->GetBinaryDirectory()) {
-      workspaceOutputDir = it.second[0]->GetCurrentBinaryDirectory();
-      workspaceProjectName = it.second[0]->GetProjectName();
-      workspaceSourcePath = it.second[0]->GetSourceDirectory();
+    if (lg->GetCurrentBinaryDirectory() == lg->GetBinaryDirectory()) {
+      workspaceOutputDir = lg->GetCurrentBinaryDirectory();
+      workspaceProjectName = lg->GetProjectName();
+      workspaceSourcePath = lg->GetSourceDirectory();
       workspaceFileName = workspaceOutputDir + "/";
       workspaceFileName += workspaceProjectName + ".workspace";
-      this->WorkspacePath = it.second[0]->GetCurrentBinaryDirectory();
-      ;
+      this->WorkspacePath = lg->GetCurrentBinaryDirectory();
       break;
     }
   }
 
-  cmGeneratedFileStream fout(workspaceFileName.c_str());
+  cmGeneratedFileStream fout(workspaceFileName);
   cmXMLWriter xml(fout);
 
   xml.StartDocument("utf-8");
@@ -122,7 +119,7 @@ std::vector<std::string> cmExtraCodeLiteGenerator::CreateProjectsByTarget(
   for (cmLocalGenerator* lg : lgs) {
     for (cmGeneratorTarget* lt : lg->GetGeneratorTargets()) {
       cmStateEnums::TargetType type = lt->GetType();
-      std::string outputDir = lg->GetCurrentBinaryDirectory();
+      std::string const& outputDir = lg->GetCurrentBinaryDirectory();
       std::string targetName = lt->GetName();
       std::string filename = outputDir + "/" + targetName + ".project";
       retval.push_back(targetName);
@@ -161,7 +158,7 @@ std::vector<std::string> cmExtraCodeLiteGenerator::CreateProjectsByProjectMaps(
   // for each sub project in the workspace create a codelite project
   for (auto const& it : this->GlobalGenerator->GetProjectMap()) {
 
-    std::string outputDir = it.second[0]->GetCurrentBinaryDirectory();
+    std::string const& outputDir = it.second[0]->GetCurrentBinaryDirectory();
     std::string projectName = it.second[0]->GetProjectName();
     retval.push_back(projectName);
     std::string filename = outputDir + "/" + projectName + ".project";
@@ -184,7 +181,7 @@ std::vector<std::string> cmExtraCodeLiteGenerator::CreateProjectsByProjectMaps(
 void cmExtraCodeLiteGenerator::CreateProjectFile(
   const std::vector<cmLocalGenerator*>& lgs)
 {
-  std::string outputDir = lgs[0]->GetCurrentBinaryDirectory();
+  std::string const& outputDir = lgs[0]->GetCurrentBinaryDirectory();
   std::string projectName = lgs[0]->GetProjectName();
   std::string filename = outputDir + "/";
 
@@ -249,7 +246,7 @@ void cmExtraCodeLiteGenerator::CreateNewProjectFile(
   const std::vector<cmLocalGenerator*>& lgs, const std::string& filename)
 {
   const cmMakefile* mf = lgs[0]->GetMakefile();
-  cmGeneratedFileStream fout(filename.c_str());
+  cmGeneratedFileStream fout(filename);
   if (!fout) {
     return;
   }
@@ -265,7 +262,7 @@ void cmExtraCodeLiteGenerator::CreateNewProjectFile(
 
   // Collect all used source files in the project
   // Sort them into two containers, one for C/C++ implementation files
-  // which may have an acompanying header, one for all other files
+  // which may have an accompanying header, one for all other files
   std::map<std::string, cmSourceFile*> cFiles;
   std::set<std::string> otherFiles;
 
@@ -408,7 +405,6 @@ void cmExtraCodeLiteGenerator::CreateProjectSourceEntries(
   const std::string& projectPath, const cmMakefile* mf,
   const std::string& projectType, const std::string& targetName)
 {
-
   cmXMLWriter& xml(*_xml);
   FindMatchingHeaderfiles(cFiles, otherFiles);
   // Create 2 virtual folders: src and include
@@ -469,10 +465,14 @@ void cmExtraCodeLiteGenerator::CreateProjectSourceEntries(
   xml.EndElement(); // ResourceCompiler
 
   xml.StartElement("General");
-  std::string outputPath = mf->GetSafeDefinition("EXECUTABLE_OUTPUT_PATH");
+  std::string outputPath =
+    mf->GetSafeDefinition("CMAKE_RUNTIME_OUTPUT_DIRECTORY");
+  if (outputPath.empty()) {
+    outputPath = mf->GetSafeDefinition("EXECUTABLE_OUTPUT_PATH");
+  }
   std::string relapath;
   if (!outputPath.empty()) {
-    relapath = cmSystemTools::RelativePath(this->WorkspacePath, outputPath);
+    relapath = cmSystemTools::RelativePath(projectPath, outputPath);
     xml.Attribute("OutputFile", relapath + "/$(ProjectName)");
   } else {
     xml.Attribute("OutputFile", "$(IntermediateDirectory)/$(ProjectName)");
@@ -544,7 +544,7 @@ void cmExtraCodeLiteGenerator::CreateNewProjectFile(
   const cmGeneratorTarget* gt, const std::string& filename)
 {
   const cmMakefile* mf = gt->Makefile;
-  cmGeneratedFileStream fout(filename.c_str());
+  cmGeneratedFileStream fout(filename);
   if (!fout) {
     return;
   }
@@ -568,7 +568,7 @@ void cmExtraCodeLiteGenerator::CreateNewProjectFile(
 
   // Collect all used source files in the project
   // Sort them into two containers, one for C/C++ implementation files
-  // which may have an acompanying header, one for all other files
+  // which may have an accompanying header, one for all other files
   std::string projectType;
 
   std::map<std::string, cmSourceFile*> cFiles;
@@ -596,7 +596,7 @@ std::string cmExtraCodeLiteGenerator::GetCodeLiteCompilerName(
     compilerIdVar = "CMAKE_C_COMPILER_ID";
   }
 
-  std::string compilerId = mf->GetSafeDefinition(compilerIdVar);
+  std::string const& compilerId = mf->GetSafeDefinition(compilerIdVar);
   std::string compiler = "gnu g++"; // default to g++
 
   // Since we need the compiler for parsing purposes only
@@ -635,7 +635,7 @@ std::string cmExtraCodeLiteGenerator::GetBuildCommand(
   if (generator == "NMake Makefiles" || generator == "Ninja") {
     ss << make;
   } else if (generator == "MinGW Makefiles" || generator == "Unix Makefiles") {
-    ss << make << " -j " << this->CpuCount;
+    ss << make << " -f$(ProjectPath)/Makefile -j " << this->CpuCount;
   }
   if (!targetName.empty()) {
     ss << " " << targetName;

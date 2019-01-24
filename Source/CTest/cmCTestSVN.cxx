@@ -107,9 +107,10 @@ bool cmCTestSVN::NoteOldRevision()
     svninfo.OldRevision = this->LoadInfo(svninfo);
     this->Log << "Revision for repository '" << svninfo.LocalPath
               << "' before update: " << svninfo.OldRevision << "\n";
-    cmCTestLog(
-      this->CTest, HANDLER_OUTPUT, "   Old revision of external repository '"
-        << svninfo.LocalPath << "' is: " << svninfo.OldRevision << "\n");
+    cmCTestLog(this->CTest, HANDLER_OUTPUT,
+               "   Old revision of external repository '"
+                 << svninfo.LocalPath << "' is: " << svninfo.OldRevision
+                 << "\n");
   }
 
   // Set the global old revision to the one of the root
@@ -128,9 +129,10 @@ bool cmCTestSVN::NoteNewRevision()
     svninfo.NewRevision = this->LoadInfo(svninfo);
     this->Log << "Revision for repository '" << svninfo.LocalPath
               << "' after update: " << svninfo.NewRevision << "\n";
-    cmCTestLog(
-      this->CTest, HANDLER_OUTPUT, "   New revision of external repository '"
-        << svninfo.LocalPath << "' is: " << svninfo.NewRevision << "\n");
+    cmCTestLog(this->CTest, HANDLER_OUTPUT,
+               "   New revision of external repository '"
+                 << svninfo.LocalPath << "' is: " << svninfo.NewRevision
+                 << "\n");
 
     // svninfo.Root = ""; // uncomment to test GuessBase
     this->Log << "Repository '" << svninfo.LocalPath
@@ -290,8 +292,9 @@ bool cmCTestSVN::RunSVNCommand(std::vector<char const*> const& parameters,
   return RunChild(&args[0], out, err);
 }
 
-class cmCTestSVN::LogParser : public cmCTestVC::OutputLogger,
-                              private cmXMLParser
+class cmCTestSVN::LogParser
+  : public cmCTestVC::OutputLogger
+  , private cmXMLParser
 {
 public:
   LogParser(cmCTestSVN* svn, const char* prefix, SVNInfo& svninfo)
@@ -302,6 +305,7 @@ public:
     this->InitializeParser();
   }
   ~LogParser() override { this->CleanupParser(); }
+
 private:
   cmCTestSVN* SVN;
   cmCTestSVN::SVNInfo& SVNRepo;
@@ -326,13 +330,15 @@ private:
     if (name == "logentry") {
       this->Rev = Revision();
       this->Rev.SVNInfo = &SVNRepo;
-      if (const char* rev = this->FindAttribute(atts, "revision")) {
+      if (const char* rev =
+            cmCTestSVN::LogParser::FindAttribute(atts, "revision")) {
         this->Rev.Rev = rev;
       }
       this->Changes.clear();
     } else if (name == "path") {
       this->CurChange = Change();
-      if (const char* action = this->FindAttribute(atts, "action")) {
+      if (const char* action =
+            cmCTestSVN::LogParser::FindAttribute(atts, "action")) {
         this->CurChange.Action = action[0];
       }
     }
@@ -515,7 +521,7 @@ private:
     } else {
       local_path = path;
     }
-    this->SVN->Repositories.emplace_back(local_path.c_str());
+    this->SVN->Repositories.emplace_back(local_path);
   }
 };
 
@@ -526,7 +532,7 @@ bool cmCTestSVN::LoadRepositories()
   }
 
   // Info for root repository
-  this->Repositories.emplace_back("");
+  this->Repositories.emplace_back();
   this->RootInfo = &(this->Repositories.back());
 
   // Run "svn status" to get the list of external repositories

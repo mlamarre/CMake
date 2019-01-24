@@ -131,6 +131,8 @@ set(SRCS
   LexerParser/cmListFileLexer.c
   LexerParser/cmListFileLexer.in.l
 
+  cmAffinity.cxx
+  cmAffinity.h
   cmArchiveWrite.cxx
   cmBase32.cxx
   cmCacheManager.cxx
@@ -205,6 +207,14 @@ set(SRCS
   cmExtraKateGenerator.h
   cmExtraSublimeTextGenerator.cxx
   cmExtraSublimeTextGenerator.h
+  cmFileAPI.cxx
+  cmFileAPI.h
+  cmFileAPICache.cxx
+  cmFileAPICache.h
+  cmFileAPICodemodel.cxx
+  cmFileAPICodemodel.h
+  cmFileAPICMakeFiles.cxx
+  cmFileAPICMakeFiles.h
   cmFileLock.cxx
   cmFileLock.h
   cmFileLockPool.cxx
@@ -244,6 +254,8 @@ set(SRCS
   cmGlobalGeneratorFactory.h
   cmGlobalUnixMakefileGenerator3.cxx
   cmGlobalUnixMakefileGenerator3.h
+  cmGlobVerificationManager.cxx
+  cmGlobVerificationManager.h
   cmGraphAdjacencyList.h
   cmGraphVizWriter.cxx
   cmGraphVizWriter.h
@@ -256,11 +268,14 @@ set(SRCS
   cmInstallFilesGenerator.cxx
   cmInstallScriptGenerator.h
   cmInstallScriptGenerator.cxx
+  cmInstallSubdirectoryGenerator.h
+  cmInstallSubdirectoryGenerator.cxx
   cmInstallTargetGenerator.h
   cmInstallTargetGenerator.cxx
   cmInstallDirectoryGenerator.h
   cmInstallDirectoryGenerator.cxx
   cmLinkedTree.h
+  cmLinkItem.cxx
   cmLinkItem.h
   cmLinkLineComputer.cxx
   cmLinkLineComputer.h
@@ -283,6 +298,7 @@ set(SRCS
   cmMakefileExecutableTargetGenerator.cxx
   cmMakefileLibraryTargetGenerator.cxx
   cmMakefileUtilityTargetGenerator.cxx
+  cmMessageType.h
   cmMessenger.cxx
   cmMessenger.h
   cmMSVC60LinkLineComputer.cxx
@@ -313,6 +329,8 @@ set(SRCS
   cmQtAutoGen.h
   cmQtAutoGenerator.cxx
   cmQtAutoGenerator.h
+  cmQtAutoGenGlobalInitializer.cxx
+  cmQtAutoGenGlobalInitializer.h
   cmQtAutoGenInitializer.cxx
   cmQtAutoGenInitializer.h
   cmQtAutoGeneratorMocUic.cxx
@@ -366,13 +384,20 @@ set(SRCS
   cmXMLWriter.h
   cmake.cxx
   cmake.h
+  cm_string_view.cxx
+  cm_string_view.hxx
+  cm_static_string_view.hxx
 
   cmCommand.cxx
   cmCommand.h
   cmCommands.cxx
   cmCommands.h
+  cmAddCompileDefinitionsCommand.cxx
+  cmAddCompileDefinitionsCommand.h
   cmAddCompileOptionsCommand.cxx
   cmAddCompileOptionsCommand.h
+  cmAddLinkOptionsCommand.cxx
+  cmAddLinkOptionsCommand.h
   cmAddCustomCommandCommand.cxx
   cmAddCustomCommandCommand.h
   cmAddCustomTargetCommand.cxx
@@ -553,6 +578,9 @@ set(SRCS
   cmSiteNameCommand.h
   cmSourceGroupCommand.cxx
   cmSourceGroupCommand.h
+  cmString.cxx
+  cmString.hxx
+  cmStringReplaceHelper.cxx
   cmStringCommand.cxx
   cmStringCommand.h
   cmSubdirCommand.cxx
@@ -567,6 +595,10 @@ set(SRCS
   cmTargetCompileOptionsCommand.h
   cmTargetIncludeDirectoriesCommand.cxx
   cmTargetIncludeDirectoriesCommand.h
+  cmTargetLinkOptionsCommand.cxx
+  cmTargetLinkOptionsCommand.h
+  cmTargetLinkDirectoriesCommand.cxx
+  cmTargetLinkDirectoriesCommand.h
   cmTargetLinkLibrariesCommand.cxx
   cmTargetLinkLibrariesCommand.h
   cmTargetPropCommandBase.cxx
@@ -665,10 +697,10 @@ if (WIN32)
       cmGlobalVisualStudio12Generator.cxx
       cmGlobalVisualStudio14Generator.h
       cmGlobalVisualStudio14Generator.cxx
-      cmGlobalVisualStudio15Generator.h
-      cmGlobalVisualStudio15Generator.cxx
       cmGlobalVisualStudioGenerator.cxx
       cmGlobalVisualStudioGenerator.h
+      cmGlobalVisualStudioVersionedGenerator.h
+      cmGlobalVisualStudioVersionedGenerator.cxx
       cmIDEFlagTable.h
       cmIDEOptions.cxx
       cmIDEOptions.h
@@ -765,6 +797,7 @@ target_link_libraries(CMakeLib cmsys
   ${CMAKE_LIBUV_LIBRARIES}
   ${CMAKE_LIBRHASH_LIBRARIES}
   ${CMake_KWIML_LIBRARIES}
+  ${CMAKE_THREAD_LIBS_INIT}
   )
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "sparc")
@@ -794,7 +827,6 @@ target_compile_definitions(CMakeLib PUBLIC ${CLANG_TIDY_DEFINITIONS})
 #
 include_directories(
   "${CMake_SOURCE_DIR}/Source/CTest"
-  ${CMAKE_XMLRPC_INCLUDES}
   ${CMAKE_CURL_INCLUDES}
   )
 #
@@ -860,7 +892,7 @@ set(CTEST_SRCS cmCTest.cxx
 
 # Build CTestLib
 add_library(CTestLib ${CTEST_SRCS})
-target_link_libraries(CTestLib CMakeLib ${CMAKE_CURL_LIBRARIES} ${CMAKE_XMLRPC_LIBRARIES})
+target_link_libraries(CTestLib CMakeLib ${CMAKE_CURL_LIBRARIES})
 
 #
 # CPack
@@ -874,10 +906,13 @@ include_directories(
 set(CPACK_SRCS
   CPack/cmCPackArchiveGenerator.cxx
   CPack/cmCPackComponentGroup.cxx
+  CPack/cmCPackDebGenerator.cxx
+  CPack/cmCPackExternalGenerator.cxx
   CPack/cmCPackGeneratorFactory.cxx
   CPack/cmCPackGenerator.cxx
   CPack/cmCPackLog.cxx
   CPack/cmCPackNSISGenerator.cxx
+  CPack/cmCPackNuGetGenerator.cxx
   CPack/cmCPackSTGZGenerator.cxx
   CPack/cmCPackTGZGenerator.cxx
   CPack/cmCPackTXZGenerator.cxx
@@ -885,7 +920,6 @@ set(CPACK_SRCS
   CPack/cmCPackTarCompressGenerator.cxx
   CPack/cmCPackZIPGenerator.cxx
   CPack/cmCPack7zGenerator.cxx
-  CPack/cmCPackDebGenerator.cxx
   )
 # CPack IFW generator
 set(CPACK_SRCS ${CPACK_SRCS}
@@ -948,8 +982,8 @@ if(CYGWIN)
 endif()
 if(WIN32 OR (CYGWIN AND LibUUID_FOUND))
   set(CPACK_SRCS ${CPACK_SRCS}
-    CPack/Wix/cmCMakeToWixPath.cxx
-    CPack/Wix/cmCMakeToWixPath.h
+    CPack/WiX/cmCMakeToWixPath.cxx
+    CPack/WiX/cmCMakeToWixPath.h
     CPack/WiX/cmCPackWIXGenerator.cxx
     CPack/WiX/cmCPackWIXGenerator.h
     CPack/WiX/cmWIXAccessControlList.cxx
@@ -1032,6 +1066,9 @@ target_link_libraries(cmake CMakeLib)
 add_library(CMakeServerLib
   cmConnection.h cmConnection.cxx
   cmFileMonitor.cxx cmFileMonitor.h
+  cmJsonObjectDictionary.h
+  cmJsonObjects.h
+  cmJsonObjects.cxx
   cmPipeConnection.cxx cmPipeConnection.h
   cmServer.cxx cmServer.h
   cmServerConnection.cxx cmServerConnection.h

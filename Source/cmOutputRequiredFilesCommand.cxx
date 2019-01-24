@@ -28,11 +28,7 @@ public:
    * Construct with dependency generation marked not done; instance
    * not placed in cmMakefile's list.
    */
-  cmDependInformation()
-    : DependDone(false)
-    , SourceFile(nullptr)
-  {
-  }
+  cmDependInformation() {}
 
   /**
    * The set of files on which this one depends.
@@ -44,13 +40,13 @@ public:
    * This flag indicates whether dependency checking has been
    * performed for this file.
    */
-  bool DependDone;
+  bool DependDone = false;
 
   /**
    * If this object corresponds to a cmSourceFile instance, this points
    * to it.
    */
-  const cmSourceFile* SourceFile;
+  const cmSourceFile* SourceFile = nullptr;
 
   /**
    * Full path to this file.
@@ -340,7 +336,7 @@ protected:
         } else {
           // try to guess which include path to use
           for (std::string incpath : this->IncludeDirectories) {
-            if (!incpath.empty() && incpath[incpath.size() - 1] != '/') {
+            if (!incpath.empty() && incpath.back() != '/') {
               incpath = incpath + "/";
             }
             incpath = incpath + path;
@@ -356,8 +352,7 @@ protected:
 
     if (!found) {
       // Couldn't find any dependency information.
-      if (this->ComplainFileRegularExpression.find(
-            info->IncludeName.c_str())) {
+      if (this->ComplainFileRegularExpression.find(info->IncludeName)) {
         cmSystemTools::Error("error cannot find dependencies for ", path);
       } else {
         // Destroy the name of the file so that it won't be output as a
@@ -422,7 +417,7 @@ protected:
     }
 
     for (std::string path : this->IncludeDirectories) {
-      if (!path.empty() && path[path.size() - 1] != '/') {
+      if (!path.empty() && path.back() != '/') {
         path = path + "/";
       }
       path = path + fname;
@@ -436,7 +431,7 @@ protected:
 
     if (extraPath) {
       std::string path = extraPath;
-      if (!path.empty() && path[path.size() - 1] != '/') {
+      if (!path.empty() && path.back() != '/') {
         path = path + "/";
       }
       path = path + fname;

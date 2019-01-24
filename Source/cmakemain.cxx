@@ -1,27 +1,29 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
    file Copyright.txt or https://cmake.org/licensing for details.  */
 
-#include "cmake.h"
 #include "cmAlgorithms.h"
-#include "cmDocumentationEntry.h"
+#include "cmDocumentationEntry.h" // IWYU pragma: keep
 #include "cmGlobalGenerator.h"
 #include "cmMakefile.h"
 #include "cmState.h"
 #include "cmStateTypes.h"
 #include "cmSystemTools.h"
+#include "cmake.h"
 #include "cmcmd.h"
 
 #ifdef CMAKE_BUILD_WITH_CMAKE
-#include "cmDocumentation.h"
-#include "cmDynamicLoader.h"
+#  include "cmDocumentation.h"
+#  include "cmDynamicLoader.h"
 #endif
 
 #include "cm_uv.h"
 
 #include "cmsys/Encoding.hxx"
 #if defined(_WIN32) && defined(CMAKE_BUILD_WITH_CMAKE)
-#include "cmsys/ConsoleBuf.hxx"
+#  include "cmsys/ConsoleBuf.hxx"
 #endif
+
+#include <ctype.h>
 #include <iostream>
 #include <string.h>
 #include <string>
@@ -34,11 +36,14 @@ static const char* cmDocumentationName[][2] = {
 };
 
 static const char* cmDocumentationUsage[][2] = {
-  { nullptr, "  cmake [options] <path-to-source>\n"
-             "  cmake [options] <path-to-existing-build>" },
-  { nullptr, "Specify a source directory to (re-)generate a build system for "
-             "it in the current working directory.  Specify an existing build "
-             "directory to re-generate its build system." },
+  { nullptr,
+    "  cmake [options] <path-to-source>\n"
+    "  cmake [options] <path-to-existing-build>\n"
+    "  cmake [options] -S <path-to-source> -B <path-to-build>" },
+  { nullptr,
+    "Specify a source directory to (re-)generate a build system for "
+    "it in the current working directory.  Specify an existing build "
+    "directory to re-generate its build system." },
   { nullptr, nullptr }
 };
 
@@ -47,15 +52,23 @@ static const char* cmDocumentationUsageNote[][2] = {
   { nullptr, nullptr }
 };
 
-#define CMAKE_BUILD_OPTIONS                                                   \
-  "  <dir>          = Project binary directory to be built.\n"                \
-  "  --target <tgt> = Build <tgt> instead of default targets.\n"              \
-  "                   May only be specified once.\n"                          \
-  "  --config <cfg> = For multi-configuration tools, choose <cfg>.\n"         \
-  "  --clean-first  = Build target 'clean' first, then build.\n"              \
-  "                   (To clean only, use --target 'clean'.)\n"               \
-  "  --use-stderr   = Ignored.  Behavior is default in CMake >= 3.0.\n"       \
-  "  --             = Pass remaining options to the native tool.\n"
+#  define CMAKE_BUILD_OPTIONS                                                 \
+    "  <dir>          = Project binary directory to be built.\n"              \
+    "  -j [<jobs>] --parallel [<jobs>] = Build in parallel using\n"           \
+    "                   the given number of jobs. If <jobs> is omitted\n"     \
+    "                   the native build tool's default number is used.\n"    \
+    "                   The CMAKE_BUILD_PARALLEL_LEVEL environment "          \
+    "variable\n"                                                              \
+    "                   specifies a default parallel level when this "        \
+    "option\n"                                                                \
+    "                   is not given.\n"                                      \
+    "  --target <tgt> = Build <tgt> instead of default targets.\n"            \
+    "                   May only be specified once.\n"                        \
+    "  --config <cfg> = For multi-configuration tools, choose <cfg>.\n"       \
+    "  --clean-first  = Build target 'clean' first, then build.\n"            \
+    "                   (To clean only, use --target 'clean'.)\n"             \
+    "  --use-stderr   = Ignored.  Behavior is default in CMake >= 3.0.\n"     \
+    "  --             = Pass remaining options to the native tool.\n"
 
 static const char* cmDocumentationOptions[][2] = {
   CMAKE_STANDARD_OPTIONS_TABLE,
@@ -66,11 +79,13 @@ static const char* cmDocumentationOptions[][2] = {
   { "-N", "View mode only." },
   { "-P <file>", "Process script mode." },
   { "--find-package", "Run in pkg-config like mode." },
-  { "--graphviz=[file]", "Generate graphviz of dependencies, see "
-                         "CMakeGraphVizOptions.cmake for more." },
+  { "--graphviz=[file]",
+    "Generate graphviz of dependencies, see "
+    "CMakeGraphVizOptions.cmake for more." },
   { "--system-information [file]", "Dump information about this system." },
-  { "--debug-trycompile", "Do not delete the try_compile build tree. Only "
-                          "useful on one try_compile at a time." },
+  { "--debug-trycompile",
+    "Do not delete the try_compile build tree. Only "
+    "useful on one try_compile at a time." },
   { "--debug-output", "Put cmake in a debug mode." },
   { "--trace", "Put cmake in trace mode." },
   { "--trace-expand", "Put cmake in trace mode with variable expansion." },
@@ -79,8 +94,9 @@ static const char* cmDocumentationOptions[][2] = {
   { "--warn-uninitialized", "Warn about uninitialized values." },
   { "--warn-unused-vars", "Warn about unused variables." },
   { "--no-warn-unused-cli", "Don't warn about command line options." },
-  { "--check-system-vars", "Find problems with variable usage in system "
-                           "files." },
+  { "--check-system-vars",
+    "Find problems with variable usage in system "
+    "files." },
   { nullptr, nullptr }
 };
 
@@ -90,7 +106,7 @@ static int do_command(int ac, char const* const* av)
 {
   std::vector<std::string> args;
   args.reserve(ac - 1);
-  args.push_back(av[0]);
+  args.emplace_back(av[0]);
   args.insert(args.end(), av + 2, av + ac);
   return cmcmd::ExecuteCMakeCommand(args);
 }
@@ -201,7 +217,7 @@ int do_cmake(int ac, char const* const* av)
   doc.addCMakeStandardDocSections();
   if (doc.CheckOptions(ac, av)) {
     // Construct and print requested documentation.
-    cmake hcm(cmake::RoleInternal);
+    cmake hcm(cmake::RoleInternal, cmState::Unknown);
     hcm.SetHomeDirectory("");
     hcm.SetHomeOutputDirectory("");
     hcm.AddCMakePaths();
@@ -211,9 +227,7 @@ int do_cmake(int ac, char const* const* av)
     std::vector<std::string> args(av, av + ac);
     hcm.SetCacheArgs(args);
 
-    std::vector<cmDocumentationEntry> generators;
-
-    hcm.GetGeneratorDocumentation(generators);
+    auto generators = hcm.GetGeneratorsDocumentation();
 
     doc.SetName("cmake");
     doc.SetSection("Name", cmDocumentationName);
@@ -269,21 +283,21 @@ int do_cmake(int ac, char const* const* av)
     } else if (cmHasLiteralPrefix(av[i], "-P")) {
       if (i == ac - 1) {
         cmSystemTools::Error("No script specified for argument -P");
-      } else {
-        workingMode = cmake::SCRIPT_MODE;
-        args.push_back(av[i]);
-        i++;
-        args.push_back(av[i]);
+        return 1;
       }
+      workingMode = cmake::SCRIPT_MODE;
+      args.emplace_back(av[i]);
+      i++;
+      args.emplace_back(av[i]);
     } else if (cmHasLiteralPrefix(av[i], "--find-package")) {
       workingMode = cmake::FIND_PACKAGE_MODE;
-      args.push_back(av[i]);
+      args.emplace_back(av[i]);
     } else {
-      args.push_back(av[i]);
+      args.emplace_back(av[i]);
     }
   }
   if (sysinfo) {
-    cmake cm(cmake::RoleProject);
+    cmake cm(cmake::RoleProject, cmState::Project);
     cm.SetHomeDirectory("");
     cm.SetHomeOutputDirectory("");
     int ret = cm.GetSystemInformation(args);
@@ -291,7 +305,19 @@ int do_cmake(int ac, char const* const* av)
   }
   cmake::Role const role =
     workingMode == cmake::SCRIPT_MODE ? cmake::RoleScript : cmake::RoleProject;
-  cmake cm(role);
+  cmState::Mode mode = cmState::Unknown;
+  switch (workingMode) {
+    case cmake::NORMAL_MODE:
+      mode = cmState::Project;
+      break;
+    case cmake::SCRIPT_MODE:
+      mode = cmState::Script;
+      break;
+    case cmake::FIND_PACKAGE_MODE:
+      mode = cmState::FindPackage;
+      break;
+  }
+  cmake cm(role, mode);
   cm.SetHomeDirectory("");
   cm.SetHomeOutputDirectory("");
   cmSystemTools::SetMessageCallback(cmakemainMessageCallback, &cm);
@@ -332,12 +358,38 @@ int do_cmake(int ac, char const* const* av)
   return 0;
 }
 
+namespace {
+int extract_job_number(int& index, char const* current, char const* next,
+                       int len_of_flag)
+{
+  std::string command(current);
+  std::string jobString = command.substr(len_of_flag);
+  if (jobString.empty() && next && isdigit(next[0])) {
+    ++index; // skip parsing the job number
+    jobString = std::string(next);
+  }
+
+  int jobs = -1;
+  unsigned long numJobs = 0;
+  if (jobString.empty()) {
+    jobs = cmake::DEFAULT_BUILD_PARALLEL_LEVEL;
+  } else if (cmSystemTools::StringToULong(jobString.c_str(), &numJobs)) {
+    jobs = int(numJobs);
+  } else {
+    std::cerr << "'" << command.substr(0, len_of_flag) << "' invalid number '"
+              << jobString << "' given.\n\n";
+  }
+  return jobs;
+}
+}
+
 static int do_build(int ac, char const* const* av)
 {
 #ifndef CMAKE_BUILD_WITH_CMAKE
   std::cerr << "This cmake does not support --build\n";
   return -1;
 #else
+  int jobs = cmake::NO_BUILD_PARALLEL_LEVEL;
   std::string target;
   std::string config = "Debug";
   std::string dir;
@@ -356,7 +408,19 @@ static int do_build(int ac, char const* const* av)
   Doing doing = DoingDir;
   for (int i = 2; i < ac; ++i) {
     if (doing == DoingNative) {
-      nativeOptions.push_back(av[i]);
+      nativeOptions.emplace_back(av[i]);
+    } else if (cmHasLiteralPrefix(av[i], "-j")) {
+      const char* nextArg = ((i + 1 < ac) ? av[i + 1] : nullptr);
+      jobs = extract_job_number(i, av[i], nextArg, sizeof("-j") - 1);
+      if (jobs < 0) {
+        dir.clear();
+      }
+    } else if (cmHasLiteralPrefix(av[i], "--parallel")) {
+      const char* nextArg = ((i + 1 < ac) ? av[i + 1] : nullptr);
+      jobs = extract_job_number(i, av[i], nextArg, sizeof("--parallel") - 1);
+      if (jobs < 0) {
+        dir.clear();
+      }
     } else if (strcmp(av[i], "--target") == 0) {
       if (!hasTarget) {
         doing = DoingTarget;
@@ -396,6 +460,25 @@ static int do_build(int ac, char const* const* av)
       }
     }
   }
+
+  if (jobs == cmake::NO_BUILD_PARALLEL_LEVEL) {
+    std::string parallel;
+    if (cmSystemTools::GetEnv("CMAKE_BUILD_PARALLEL_LEVEL", parallel)) {
+      if (parallel.empty()) {
+        jobs = cmake::DEFAULT_BUILD_PARALLEL_LEVEL;
+      } else {
+        unsigned long numJobs = 0;
+        if (cmSystemTools::StringToULong(parallel.c_str(), &numJobs)) {
+          jobs = int(numJobs);
+        } else {
+          std::cerr << "'CMAKE_BUILD_PARALLEL_LEVEL' environment variable\n"
+                    << "invalid number '" << parallel << "' given.\n\n";
+          dir.clear();
+        }
+      }
+    }
+  }
+
   if (dir.empty()) {
     /* clang-format off */
     std::cerr <<
@@ -407,10 +490,10 @@ static int do_build(int ac, char const* const* av)
     return 1;
   }
 
-  cmake cm(cmake::RoleInternal);
+  cmake cm(cmake::RoleInternal, cmState::Unknown);
   cmSystemTools::SetMessageCallback(cmakemainMessageCallback, &cm);
   cm.SetProgressCallback(cmakemainProgressCallback, &cm);
-  return cm.Build(dir, target, config, nativeOptions, clean);
+  return cm.Build(jobs, dir, target, config, nativeOptions, clean);
 #endif
 }
 
@@ -445,7 +528,7 @@ static int do_open(int ac, char const* const* av)
     return 1;
   }
 
-  cmake cm(cmake::RoleInternal);
+  cmake cm(cmake::RoleInternal, cmState::Unknown);
   cmSystemTools::SetMessageCallback(cmakemainMessageCallback, &cm);
   cm.SetProgressCallback(cmakemainProgressCallback, &cm);
   return cm.Open(dir, false) ? 0 : 1;

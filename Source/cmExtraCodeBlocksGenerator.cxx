@@ -33,7 +33,6 @@ http://forums.codeblocks.org/index.php/topic,6789.0.html
 */
 
 cmExtraCodeBlocksGenerator::cmExtraCodeBlocksGenerator()
-  : cmExternalMakefileProjectGenerator()
 {
 }
 
@@ -199,7 +198,7 @@ void cmExtraCodeBlocksGenerator::CreateNewProjectFile(
   const std::vector<cmLocalGenerator*>& lgs, const std::string& filename)
 {
   const cmMakefile* mf = lgs[0]->GetMakefile();
-  cmGeneratedFileStream fout(filename.c_str());
+  cmGeneratedFileStream fout(filename);
   if (!fout) {
     return;
   }
@@ -337,7 +336,7 @@ void cmExtraCodeBlocksGenerator::CreateNewProjectFile(
   xml.EndElement(); // Build
 
   // Collect all used source files in the project.
-  // Keep a list of C/C++ source files which might have an acompanying header
+  // Keep a list of C/C++ source files which might have an accompanying header
   // that should be looked for.
   typedef std::map<std::string, CbpUnit> all_files_map_t;
   all_files_map_t allFiles;
@@ -476,7 +475,7 @@ std::string cmExtraCodeBlocksGenerator::CreateDummyTargetFile(
   filename += "/";
   filename += target->GetName();
   filename += ".objlib";
-  cmGeneratedFileStream fout(filename.c_str());
+  cmGeneratedFileStream fout(filename);
   if (fout) {
     /* clang-format off */
     fout << "# This is a dummy file for the OBJECT library "
@@ -614,23 +613,27 @@ void cmExtraCodeBlocksGenerator::AppendTarget(
   xml.StartElement("MakeCommands");
 
   xml.StartElement("Build");
-  xml.Attribute("command", this->BuildMakeCommand(make, makefileName.c_str(),
-                                                  targetName, makeFlags));
+  xml.Attribute(
+    "command",
+    this->BuildMakeCommand(make, makefileName.c_str(), targetName, makeFlags));
   xml.EndElement();
 
   xml.StartElement("CompileFile");
-  xml.Attribute("command", this->BuildMakeCommand(make, makefileName.c_str(),
-                                                  "\"$file\"", makeFlags));
+  xml.Attribute("command",
+                this->BuildMakeCommand(make, makefileName.c_str(), "\"$file\"",
+                                       makeFlags));
   xml.EndElement();
 
   xml.StartElement("Clean");
-  xml.Attribute("command", this->BuildMakeCommand(make, makefileName.c_str(),
-                                                  "clean", makeFlags));
+  xml.Attribute(
+    "command",
+    this->BuildMakeCommand(make, makefileName.c_str(), "clean", makeFlags));
   xml.EndElement();
 
   xml.StartElement("DistClean");
-  xml.Attribute("command", this->BuildMakeCommand(make, makefileName.c_str(),
-                                                  "clean", makeFlags));
+  xml.Attribute(
+    "command",
+    this->BuildMakeCommand(make, makefileName.c_str(), "clean", makeFlags));
   xml.EndElement();
 
   xml.EndElement(); // MakeCommands
@@ -662,7 +665,7 @@ std::string cmExtraCodeBlocksGenerator::GetCBCompilerId(const cmMakefile* mf)
     pureFortran = true;
   }
 
-  std::string compilerId = mf->GetSafeDefinition(compilerIdVar);
+  std::string const& compilerId = mf->GetSafeDefinition(compilerIdVar);
   std::string compiler = "gcc"; // default to gcc
   if (compilerId == "MSVC") {
     if (mf->IsDefinitionSet("MSVC10")) {

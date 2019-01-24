@@ -122,7 +122,7 @@ int uv__platform_loop_init(uv_loop_t* loop) {
   ep = epoll_create1(0);
   loop->ep = ep;
   if (ep == NULL)
-    return -errno;
+    return UV__ERR(errno);
 
   return 0;
 }
@@ -229,15 +229,15 @@ static int getexe(const int pid, char* buf, size_t len) {
   assert(((Output_buf.Output_data.offsetPath >>24) & 0xFF) == 'A');
 
   /* Get the offset from the lowest 3 bytes */
-  Output_path = (char*)(&Output_buf) +
-                (Output_buf.Output_data.offsetPath & 0x00FFFFFF);
+  Output_path = (struct Output_path_type*) ((char*) (&Output_buf) +
+      (Output_buf.Output_data.offsetPath & 0x00FFFFFF));
 
   if (Output_path->len >= len) {
     errno = ENOBUFS;
     return -1;
   }
 
-  strncpy(buf, Output_path->path, len);
+  uv__strscpy(buf, Output_path->path, len);
 
   return 0;
 }
@@ -259,12 +259,12 @@ int uv_exepath(char* buffer, size_t* size) {
   int pid;
 
   if (buffer == NULL || size == NULL || *size == 0)
-    return -EINVAL;
+    return UV_EINVAL;
 
   pid = getpid();
   res = getexe(pid, args, sizeof(args));
   if (res < 0)
-    return -EINVAL;
+    return UV_EINVAL;
 
   /*
    * Possibilities for args:
@@ -277,7 +277,7 @@ int uv_exepath(char* buffer, size_t* size) {
   /* Case i) and ii) absolute or relative paths */
   if (strchr(args, '/') != NULL) {
     if (realpath(args, abspath) != abspath)
-      return -errno;
+      return UV__ERR(errno);
 
     abspath_size = strlen(abspath);
 
@@ -297,11 +297,11 @@ int uv_exepath(char* buffer, size_t* size) {
     char* path = getenv("PATH");
 
     if (path == NULL)
-      return -EINVAL;
+      return UV_EINVAL;
 
     clonedpath = uv__strdup(path);
     if (clonedpath == NULL)
-      return -ENOMEM;
+      return UV_ENOMEM;
 
     token = strtok(clonedpath, ":");
     while (token != NULL) {
@@ -327,7 +327,7 @@ int uv_exepath(char* buffer, size_t* size) {
     uv__free(clonedpath);
 
     /* Out of tokens (path entries), and no match found */
-    return -EINVAL;
+    return UV_EINVAL;
   }
 }
 
@@ -357,13 +357,11 @@ uint64_t uv_get_total_memory(void) {
 
 
 int uv_resident_set_memory(size_t* rss) {
-  char* psa;
   char* ascb;
   char* rax;
   size_t nframes;
 
-  psa = PSA_PTR;
-  ascb  = *(char* __ptr32 *)(psa + PSAAOLD);
+  ascb  = *(char* __ptr32 *)(PSA_PTR + PSAAOLD);
   rax = *(char* __ptr32 *)(ascb + ASCBRSME);
   nframes = *(unsigned int*)(rax + RAXFMCT);
 
@@ -407,7 +405,7 @@ int uv_cpu_info(uv_cpu_info_t** cpu_infos, int* count) {
 
   *cpu_infos = uv__malloc(*count * sizeof(uv_cpu_info_t));
   if (!*cpu_infos)
-    return -ENOMEM;
+    return UV_ENOMEM;
 
   cpu_info = *cpu_infos;
   idx = 0;
@@ -452,7 +450,7 @@ static int uv__interface_addresses_v6(uv_interface_address_t** addresses,
   maxsize = 16384;
 
   if (0 > (sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP)))
-    return -errno;
+    return UV__ERR(errno);
 
   ifc.__nif6h_version = 1;
   ifc.__nif6h_buflen = maxsize;
@@ -460,7 +458,7 @@ static int uv__interface_addresses_v6(uv_interface_address_t** addresses,
 
   if (ioctl(sockfd, SIOCGIFCONF6, &ifc) == -1) {
     uv__close(sockfd);
-    return -errno;
+    return UV__ERR(errno);
   }
 
 
@@ -484,7 +482,7 @@ static int uv__interface_addresses_v6(uv_interface_address_t** addresses,
   *addresses = uv__malloc(*count * sizeof(uv_interface_address_t));
   if (!(*addresses)) {
     uv__close(sockfd);
-    return -ENOMEM;
+    return UV_ENOMEM;
   }
   address = *addresses;
 
@@ -512,7 +510,7 @@ static int uv__interface_addresses_v6(uv_interface_address_t** addresses,
     /* TODO: Retrieve netmask using SIOCGIFNETMASK ioctl */
 
     address->is_internal = flg.__nif6e_flags & _NIF6E_FLAGS_LOOPBACK ? 1 : 0;
-
+    memset(address->phys_addr, 0, sizeof(address->phys_addr));
     address++;
   }
 
@@ -531,25 +529,27 @@ int uv_interface_addresses(uv_interface_address_t** addresses, int* count) {
   struct ifreq* p;
   int count_v6;
 
+  *count = 0;
+  *addresses = NULL;
+
   /* get the ipv6 addresses first */
   uv_interface_address_t* addresses_v6;
   uv__interface_addresses_v6(&addresses_v6, &count_v6);
 
   /* now get the ipv4 addresses */
-  *count = 0;
 
   /* Assume maximum buffer size allowable */
   maxsize = 16384;
 
   sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
   if (0 > sockfd)
-    return -errno;
+    return UV__ERR(errno);
 
   ifc.ifc_req = uv__calloc(1, maxsize);
   ifc.ifc_len = maxsize;
   if (ioctl(sockfd, SIOCGIFCONF, &ifc) == -1) {
     uv__close(sockfd);
-    return -errno;
+    return UV__ERR(errno);
   }
 
 #define MAX(a,b) (((a)>(b))?(a):(b))
@@ -569,7 +569,7 @@ int uv_interface_addresses(uv_interface_address_t** addresses, int* count) {
     memcpy(flg.ifr_name, p->ifr_name, sizeof(flg.ifr_name));
     if (ioctl(sockfd, SIOCGIFFLAGS, &flg) == -1) {
       uv__close(sockfd);
-      return -errno;
+      return UV__ERR(errno);
     }
 
     if (!(flg.ifr_flags & IFF_UP && flg.ifr_flags & IFF_RUNNING))
@@ -578,13 +578,18 @@ int uv_interface_addresses(uv_interface_address_t** addresses, int* count) {
     (*count)++;
   }
 
+  if (*count == 0) {
+    uv__close(sockfd);
+    return 0;
+  }
+
   /* Alloc the return interface structs */
   *addresses = uv__malloc((*count + count_v6) *
                           sizeof(uv_interface_address_t));
 
   if (!(*addresses)) {
     uv__close(sockfd);
-    return -ENOMEM;
+    return UV_ENOMEM;
   }
   address = *addresses;
 
@@ -607,7 +612,7 @@ int uv_interface_addresses(uv_interface_address_t** addresses, int* count) {
     memcpy(flg.ifr_name, p->ifr_name, sizeof(flg.ifr_name));
     if (ioctl(sockfd, SIOCGIFFLAGS, &flg) == -1) {
       uv__close(sockfd);
-      return -ENOSYS;
+      return UV_ENOSYS;
     }
 
     if (!(flg.ifr_flags & IFF_UP && flg.ifr_flags & IFF_RUNNING))
@@ -624,6 +629,7 @@ int uv_interface_addresses(uv_interface_address_t** addresses, int* count) {
     }
 
     address->is_internal = flg.ifr_flags & IFF_LOOPBACK ? 1 : 0;
+    memset(address->phys_addr, 0, sizeof(address->phys_addr));
     address++;
   }
 
@@ -662,7 +668,7 @@ void uv__platform_invalidate_fd(uv_loop_t* loop, int fd) {
 
   /* Remove the file descriptor from the epoll. */
   if (loop->ep != NULL)
-    epoll_ctl(loop->ep, UV__EPOLL_CTL_DEL, fd, &dummy);
+    epoll_ctl(loop->ep, EPOLL_CTL_DEL, fd, &dummy);
 }
 
 
@@ -706,7 +712,7 @@ int uv_fs_event_start(uv_fs_event_t* handle, uv_fs_event_cb cb,
   int rc;
 
   if (uv__is_active(handle))
-    return -EINVAL;
+    return UV_EINVAL;
 
   ep = handle->loop->ep;
   assert(ep->msg_queue != -1);
@@ -718,11 +724,11 @@ int uv_fs_event_start(uv_fs_event_t* handle, uv_fs_event_cb cb,
 
   path = uv__strdup(filename);
   if (path == NULL)
-    return -ENOMEM;
+    return UV_ENOMEM;
 
   rc = __w_pioctl(path, _IOCC_REGFILEINT, sizeof(reg_struct), &reg_struct);
   if (rc != 0)
-    return -errno;
+    return UV__ERR(errno);
 
   uv__handle_start(handle);
   handle->path = path;
@@ -751,7 +757,7 @@ int uv_fs_event_stop(uv_fs_event_t* handle) {
   memcpy(reg_struct.__rfis_rftok, handle->rfis_rftok,
          sizeof(handle->rfis_rftok));
 
-  /* 
+  /*
    * This call will take "/" as the path argument in case we
    * don't care to supply the correct path. The system will simply
    * ignore it.
@@ -838,9 +844,9 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
     e.fd = w->fd;
 
     if (w->events == 0)
-      op = UV__EPOLL_CTL_ADD;
+      op = EPOLL_CTL_ADD;
     else
-      op = UV__EPOLL_CTL_MOD;
+      op = EPOLL_CTL_MOD;
 
     /* XXX Future optimization: do EPOLL_CTL_MOD lazily if we stop watching
      * events, skip the syscall and squelch the events after epoll_wait().
@@ -849,10 +855,10 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
       if (errno != EEXIST)
         abort();
 
-      assert(op == UV__EPOLL_CTL_ADD);
+      assert(op == EPOLL_CTL_ADD);
 
       /* We've reactivated a file descriptor that's been watched before. */
-      if (epoll_ctl(loop->ep, UV__EPOLL_CTL_MOD, w->fd, &e))
+      if (epoll_ctl(loop->ep, EPOLL_CTL_MOD, w->fd, &e))
         abort();
     }
 
@@ -934,7 +940,7 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
          * Ignore all errors because we may be racing with another thread
          * when the file descriptor is closed.
          */
-        epoll_ctl(loop->ep, UV__EPOLL_CTL_DEL, fd, pe);
+        epoll_ctl(loop->ep, EPOLL_CTL_DEL, fd, pe);
         continue;
       }
 
@@ -987,7 +993,7 @@ void uv__set_process_title(const char* title) {
 }
 
 int uv__io_fork(uv_loop_t* loop) {
-  /* 
+  /*
     Nullify the msg queue but don't close it because
     it is still being used by the parent.
   */

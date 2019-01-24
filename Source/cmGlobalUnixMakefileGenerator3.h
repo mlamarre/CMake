@@ -132,7 +132,8 @@ public:
                             const std::string& projectName,
                             const std::string& projectDir,
                             const std::string& targetName,
-                            const std::string& config, bool fast, bool verbose,
+                            const std::string& config, bool fast, int jobs,
+                            bool verbose,
                             std::vector<std::string> const& makeOptions =
                               std::vector<std::string>()) override;
 
@@ -216,11 +217,8 @@ protected:
   // Store per-target progress counters.
   struct TargetProgress
   {
-    TargetProgress()
-      : NumberOfActions(0)
-    {
-    }
-    unsigned long NumberOfActions;
+    TargetProgress() {}
+    unsigned long NumberOfActions = 0;
     std::string VariableFile;
     std::vector<unsigned long> Marks;
     void WriteProgressVariables(unsigned long total, unsigned long& current);

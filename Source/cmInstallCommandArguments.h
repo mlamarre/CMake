@@ -13,7 +13,7 @@
 class cmInstallCommandArguments
 {
 public:
-  cmInstallCommandArguments(const std::string& defaultComponent);
+  cmInstallCommandArguments(std::string defaultComponent);
   void SetGenericArguments(cmInstallCommandArguments* args)
   {
     this->GenericArguments = args;
@@ -26,6 +26,7 @@ public:
 
   const std::string& GetDestination() const;
   const std::string& GetComponent() const;
+  const std::string& GetNamelinkComponent() const;
   bool GetExcludeFromAll() const;
   const std::string& GetRename() const;
   const std::string& GetPermissions() const;
@@ -33,6 +34,8 @@ public:
   bool GetOptional() const;
   bool GetNamelinkOnly() const;
   bool GetNamelinkSkip() const;
+  bool HasNamelinkComponent() const;
+  const std::string& GetType() const;
 
   // once HandleDirectoryMode() is also switched to using
   // cmInstallCommandArguments then these two functions can become non-static
@@ -45,6 +48,7 @@ private:
   cmInstallCommandArguments(); // disabled
   cmCAString Destination;
   cmCAString Component;
+  cmCAString NamelinkComponent;
   cmCAEnabler ExcludeFromAll;
   cmCAString Rename;
   cmCAStringVector Permissions;
@@ -52,6 +56,7 @@ private:
   cmCAEnabler Optional;
   cmCAEnabler NamelinkOnly;
   cmCAEnabler NamelinkSkip;
+  cmCAString Type;
 
   std::string DestinationString;
   std::string PermissionsString;

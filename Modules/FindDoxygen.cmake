@@ -69,6 +69,7 @@ Functions
 
     doxygen_add_docs(targetName
         [filesOrDirs...]
+        [ALL]
         [WORKING_DIRECTORY dir]
         [COMMENT comment])
 
@@ -90,6 +91,8 @@ Functions
   If provided, the optional ``comment`` will be passed as the ``COMMENT`` for
   the :command:`add_custom_target` command used to create the custom target
   internally.
+
+  If ALL is set, the target will be added to the default build target.
 
   The contents of the generated ``Doxyfile`` can be customized by setting CMake
   variables before calling ``doxygen_add_docs()``. Any variable with a name of
@@ -367,6 +370,9 @@ Deprecated Hint Variables
 
 #]=======================================================================]
 
+cmake_policy(PUSH)
+cmake_policy(SET CMP0057 NEW) # if IN_LIST
+
 # For backwards compatibility support
 if(Doxygen_FIND_QUIETLY)
     set(DOXYGEN_FIND_QUIETLY TRUE)
@@ -479,12 +485,18 @@ endmacro()
 # Find Graphviz Dot...
 #
 macro(_Doxygen_find_dot)
-    set(_x86 "(x86)")
-    file(
-        GLOB _Doxygen_GRAPHVIZ_BIN_DIRS
-        "$ENV{ProgramFiles}/Graphviz*/bin"
-        "$ENV{ProgramFiles${_x86}}/Graphviz*/bin"
-    )
+    if(WIN32)
+        set(_x86 "(x86)")
+        file(
+            GLOB _Doxygen_GRAPHVIZ_BIN_DIRS
+            "$ENV{ProgramFiles}/Graphviz*/bin"
+            "$ENV{ProgramFiles${_x86}}/Graphviz*/bin"
+        )
+        unset(_x86)
+    else()
+        set(_Doxygen_GRAPHVIZ_BIN_DIRS "")
+    endif()
+
     find_program(
         DOXYGEN_DOT_EXECUTABLE
         NAMES dot
@@ -523,7 +535,6 @@ macro(_Doxygen_find_dot)
     endif()
 
     unset(_Doxygen_GRAPHVIZ_BIN_DIRS)
-    unset(_x86)
 endmacro()
 
 #
@@ -788,7 +799,7 @@ function(doxygen_list_to_quoted_strings LIST_VARIABLE)
 endfunction()
 
 function(doxygen_add_docs targetName)
-    set(_options)
+    set(_options ALL)
     set(_one_value_args WORKING_DIRECTORY COMMENT)
     set(_multi_value_args)
     cmake_parse_arguments(_args
@@ -1089,8 +1100,13 @@ doxygen_add_docs() for target ${targetName}")
     set(_target_doxyfile "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile.${targetName}")
     configure_file("${_doxyfile_template}" "${_target_doxyfile}")
 
+    unset(_all)
+    if(${_args_ALL})
+        set(_all ALL)
+    endif()
+
     # Add the target
-    add_custom_target( ${targetName} VERBATIM
+    add_custom_target( ${targetName} ${_all} VERBATIM
         COMMAND ${CMAKE_COMMAND} -E make_directory ${_original_doxygen_output_dir}
         COMMAND "${DOXYGEN_EXECUTABLE}" "${_target_doxyfile}"
         WORKING_DIRECTORY "${_args_WORKING_DIRECTORY}"
@@ -1100,3 +1116,5 @@ doxygen_add_docs() for target ${targetName}")
     )
 
 endfunction()
+
+cmake_policy(POP)

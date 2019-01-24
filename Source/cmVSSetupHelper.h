@@ -4,7 +4,7 @@
 #define cmVSSetupHelper_h
 
 #ifndef NOMINMAX
-#define NOMINMAX // Undefine min and max defined by windows.h
+#  define NOMINMAX // Undefine min and max defined by windows.h
 #endif
 
 // Published by Visual Studio Setup team
@@ -97,6 +97,7 @@ public:
   operator BSTR() const { return str; }
   BSTR* operator&() throw() { return &str; }
   ~SmartBSTR() throw() { ::SysFreeString(str); }
+
 private:
   BSTR str;
 };
@@ -106,16 +107,12 @@ struct VSInstanceInfo
   std::wstring InstanceId;
   std::wstring VSInstallLocation;
   std::wstring Version;
-  ULONGLONG ullVersion;
-  bool IsWin10SDKInstalled;
-  bool IsWin81SDKInstalled;
+  std::string VCToolsetVersion;
+  ULONGLONG ullVersion = 0;
+  bool IsWin10SDKInstalled = false;
+  bool IsWin81SDKInstalled = false;
 
-  VSInstanceInfo()
-  {
-    InstanceId = VSInstallLocation = Version = L"";
-    ullVersion = 0;
-    IsWin10SDKInstalled = IsWin81SDKInstalled = false;
-  }
+  VSInstanceInfo() = default;
 
   std::string GetInstallLocation() const;
 };
@@ -123,13 +120,14 @@ struct VSInstanceInfo
 class cmVSSetupAPIHelper
 {
 public:
-  cmVSSetupAPIHelper();
+  cmVSSetupAPIHelper(unsigned int version);
   ~cmVSSetupAPIHelper();
 
   bool SetVSInstance(std::string const& vsInstallLocation);
 
-  bool IsVS2017Installed();
+  bool IsVSInstalled();
   bool GetVSInstanceInfo(std::string& vsInstallLocation);
+  bool GetVCToolsetVersion(std::string& vsToolsetVersion);
   bool IsWin10SDKInstalled();
   bool IsWin81SDKInstalled();
 
@@ -142,6 +140,8 @@ private:
   int ChooseVSInstance(const std::vector<VSInstanceInfo>& vecVSInstances);
   bool EnumerateAndChooseVSInstance();
 
+  unsigned int Version;
+
   // COM ptrs to query about VS instances
   SmartCOMPtr<ISetupConfiguration> setupConfig;
   SmartCOMPtr<ISetupConfiguration2> setupConfig2;
@@ -152,6 +152,7 @@ private:
   HRESULT comInitialized;
   // current best instance of VS selected
   VSInstanceInfo chosenInstanceInfo;
+  bool IsEWDKEnabled();
 
   std::string SpecifiedVSInstallLocation;
 };

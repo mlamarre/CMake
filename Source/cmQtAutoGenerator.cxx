@@ -1,25 +1,32 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
    file Copyright.txt or https://cmake.org/licensing for details.  */
-#include "cmQtAutoGen.h"
 #include "cmQtAutoGenerator.h"
+#include "cmQtAutoGen.h"
 
 #include "cmsys/FStream.hxx"
 
 #include "cmAlgorithms.h"
 #include "cmGlobalGenerator.h"
 #include "cmMakefile.h"
+#include "cmState.h"
 #include "cmStateDirectory.h"
 #include "cmStateSnapshot.h"
 #include "cmSystemTools.h"
 #include "cmake.h"
 
 #include <algorithm>
+#include <utility>
 
 // -- Class methods
 
-void cmQtAutoGenerator::Logger::SetVerbose(bool value)
+void cmQtAutoGenerator::Logger::RaiseVerbosity(std::string const& value)
 {
-  Verbose_ = value;
+  unsigned long verbosity = 0;
+  if (cmSystemTools::StringToULong(value.c_str(), &verbosity)) {
+    if (this->Verbosity_ < verbosity) {
+      this->Verbosity_ = static_cast<unsigned int>(verbosity);
+    }
+  }
 }
 
 void cmQtAutoGenerator::Logger::SetColorOutput(bool value)
@@ -47,7 +54,7 @@ void cmQtAutoGenerator::Logger::Info(GeneratorT genType,
   }
   {
     std::lock_guard<std::mutex> lock(Mutex_);
-    cmSystemTools::Stdout(msg.c_str(), msg.size());
+    cmSystemTools::Stdout(msg);
   }
 }
 
@@ -71,7 +78,7 @@ void cmQtAutoGenerator::Logger::Warning(GeneratorT genType,
   msg.push_back('\n');
   {
     std::lock_guard<std::mutex> lock(Mutex_);
-    cmSystemTools::Stdout(msg.c_str(), msg.size());
+    cmSystemTools::Stdout(msg);
   }
 }
 
@@ -100,7 +107,7 @@ void cmQtAutoGenerator::Logger::Error(GeneratorT genType,
   msg.push_back('\n');
   {
     std::lock_guard<std::mutex> lock(Mutex_);
-    cmSystemTools::Stderr(msg.c_str(), msg.size());
+    cmSystemTools::Stderr(msg);
   }
 }
 
@@ -142,21 +149,95 @@ void cmQtAutoGenerator::Logger::ErrorCommand(
   msg.push_back('\n');
   {
     std::lock_guard<std::mutex> lock(Mutex_);
-    cmSystemTools::Stderr(msg.c_str(), msg.size());
+    cmSystemTools::Stderr(msg);
   }
 }
 
-std::string cmQtAutoGenerator::FileSystem::RealPath(
+std::string cmQtAutoGenerator::FileSystem::GetRealPath(
   std::string const& filename)
 {
   std::lock_guard<std::mutex> lock(Mutex_);
   return cmSystemTools::GetRealPath(filename);
 }
 
+std::string cmQtAutoGenerator::FileSystem::CollapseCombinedPath(
+  std::string const& dir, std::string const& file)
+{
+  std::lock_guard<std::mutex> lock(Mutex_);
+  return cmSystemTools::CollapseCombinedPath(dir, file);
+}
+
+void cmQtAutoGenerator::FileSystem::SplitPath(
+  const std::string& p, std::vector<std::string>& components,
+  bool expand_home_dir)
+{
+  std::lock_guard<std::mutex> lock(Mutex_);
+  cmSystemTools::SplitPath(p, components, expand_home_dir);
+}
+
+std::string cmQtAutoGenerator::FileSystem::JoinPath(
+  const std::vector<std::string>& components)
+{
+  std::lock_guard<std::mutex> lock(Mutex_);
+  return cmSystemTools::JoinPath(components);
+}
+
+std::string cmQtAutoGenerator::FileSystem::JoinPath(
+  std::vector<std::string>::const_iterator first,
+  std::vector<std::string>::const_iterator last)
+{
+  std::lock_guard<std::mutex> lock(Mutex_);
+  return cmSystemTools::JoinPath(first, last);
+}
+
+std::string cmQtAutoGenerator::FileSystem::GetFilenameWithoutLastExtension(
+  const std::string& filename)
+{
+  std::lock_guard<std::mutex> lock(Mutex_);
+  return cmSystemTools::GetFilenameWithoutLastExtension(filename);
+}
+
+std::string cmQtAutoGenerator::FileSystem::SubDirPrefix(
+  std::string const& filename)
+{
+  std::lock_guard<std::mutex> lock(Mutex_);
+  return cmQtAutoGen::SubDirPrefix(filename);
+}
+
+void cmQtAutoGenerator::FileSystem::setupFilePathChecksum(
+  std::string const& currentSrcDir, std::string const& currentBinDir,
+  std::string const& projectSrcDir, std::string const& projectBinDir)
+{
+  std::lock_guard<std::mutex> lock(Mutex_);
+  FilePathChecksum_.setupParentDirs(currentSrcDir, currentBinDir,
+                                    projectSrcDir, projectBinDir);
+}
+
+std::string cmQtAutoGenerator::FileSystem::GetFilePathChecksum(
+  std::string const& filename)
+{
+  std::lock_guard<std::mutex> lock(Mutex_);
+  return FilePathChecksum_.getPart(filename);
+}
+
 bool cmQtAutoGenerator::FileSystem::FileExists(std::string const& filename)
 {
   std::lock_guard<std::mutex> lock(Mutex_);
   return cmSystemTools::FileExists(filename);
+}
+
+bool cmQtAutoGenerator::FileSystem::FileExists(std::string const& filename,
+                                               bool isFile)
+{
+  std::lock_guard<std::mutex> lock(Mutex_);
+  return cmSystemTools::FileExists(filename, isFile);
+}
+
+unsigned long cmQtAutoGenerator::FileSystem::FileLength(
+  std::string const& filename)
+{
+  std::lock_guard<std::mutex> lock(Mutex_);
+  return cmSystemTools::FileLength(filename);
 }
 
 bool cmQtAutoGenerator::FileSystem::FileIsOlderThan(
@@ -188,14 +269,15 @@ bool cmQtAutoGenerator::FileSystem::FileRead(std::string& content,
                                              std::string* error)
 {
   bool success = false;
-  {
-    std::lock_guard<std::mutex> lock(Mutex_);
-    if (cmSystemTools::FileExists(filename)) {
-      std::size_t const length = cmSystemTools::FileLength(filename);
+  if (FileExists(filename, true)) {
+    unsigned long const length = FileLength(filename);
+    {
+      std::lock_guard<std::mutex> lock(Mutex_);
       cmsys::ifstream ifs(filename.c_str(), (std::ios::in | std::ios::binary));
       if (ifs) {
-        content.resize(length);
-        ifs.read(&content.front(), content.size());
+        content.reserve(length);
+        content.assign(std::istreambuf_iterator<char>{ ifs },
+                       std::istreambuf_iterator<char>{});
         if (ifs) {
           success = true;
         } else {
@@ -207,9 +289,10 @@ bool cmQtAutoGenerator::FileSystem::FileRead(std::string& content,
       } else if (error != nullptr) {
         error->append("Opening the file for reading failed.");
       }
-    } else if (error != nullptr) {
-      error->append("The file does not exist.");
     }
+  } else if (error != nullptr) {
+    error->append(
+      "The file does not exist, is not readable or is a directory.");
   }
   return success;
 }
@@ -291,10 +374,11 @@ bool cmQtAutoGenerator::FileSystem::FileRemove(std::string const& filename)
   return cmSystemTools::RemoveFile(filename);
 }
 
-bool cmQtAutoGenerator::FileSystem::Touch(std::string const& filename)
+bool cmQtAutoGenerator::FileSystem::Touch(std::string const& filename,
+                                          bool create)
 {
   std::lock_guard<std::mutex> lock(Mutex_);
-  return cmSystemTools::Touch(filename, false);
+  return cmSystemTools::Touch(filename, create);
 }
 
 bool cmQtAutoGenerator::FileSystem::MakeDirectory(std::string const& dirname)
@@ -539,8 +623,8 @@ void cmQtAutoGenerator::ReadOnlyProcessT::UVExit(uv_process_t* handle,
 void cmQtAutoGenerator::ReadOnlyProcessT::UVTryFinish()
 {
   // There still might be data in the pipes after the process has finished.
-  // Therefore check if the process is finished AND all pipes are closed before
-  // signaling the worker thread to continue.
+  // Therefore check if the process is finished AND all pipes are closed
+  // before signaling the worker thread to continue.
   if (UVProcess_.get() == nullptr) {
     if (UVPipeOut_.uv_pipe() == nullptr) {
       if (UVPipeErr_.uv_pipe() == nullptr) {
@@ -555,12 +639,23 @@ cmQtAutoGenerator::cmQtAutoGenerator()
   : FileSys_(&Logger_)
 {
   // Initialize logger
-  Logger_.SetVerbose(cmSystemTools::HasEnv("VERBOSE"));
+  {
+    std::string verbose;
+    if (cmSystemTools::GetEnv("VERBOSE", verbose) && !verbose.empty()) {
+      unsigned long iVerbose = 0;
+      if (cmSystemTools::StringToULong(verbose.c_str(), &iVerbose)) {
+        Logger_.SetVerbosity(static_cast<unsigned int>(iVerbose));
+      } else {
+        // Non numeric verbosity
+        Logger_.SetVerbose(cmSystemTools::IsOn(verbose));
+      }
+    }
+  }
   {
     std::string colorEnv;
     cmSystemTools::GetEnv("COLOR", colorEnv);
     if (!colorEnv.empty()) {
-      Logger_.SetColorOutput(cmSystemTools::IsOn(colorEnv.c_str()));
+      Logger_.SetColorOutput(cmSystemTools::IsOn(colorEnv));
     } else {
       Logger_.SetColorOutput(true);
     }
@@ -592,7 +687,7 @@ bool cmQtAutoGenerator::Run(std::string const& infoFile,
 
   bool success = false;
   {
-    cmake cm(cmake::RoleScript);
+    cmake cm(cmake::RoleScript, cmState::Unknown);
     cm.SetHomeOutputDirectory(InfoDir());
     cm.SetHomeDirectory(InfoDir());
     cm.GetCurrentSnapshot().SetDefaultDefinitions();
@@ -605,7 +700,7 @@ bool cmQtAutoGenerator::Run(std::string const& infoFile,
     auto makefile = cm::make_unique<cmMakefile>(&gg, snapshot);
     // The OLD/WARN behavior for policy CMP0053 caused a speed regression.
     // https://gitlab.kitware.com/cmake/cmake/issues/17570
-    makefile->SetPolicyVersion("3.9");
+    makefile->SetPolicyVersion("3.9", std::string());
     gg.SetCurrentMakefile(makefile.get());
     success = this->Init(makefile.get());
   }

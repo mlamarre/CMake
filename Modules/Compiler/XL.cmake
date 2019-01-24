@@ -20,8 +20,12 @@ macro(__compiler_xl lang)
   # Feature flags.
   set(CMAKE_${lang}_VERBOSE_FLAG "-V")
   set(CMAKE_${lang}_COMPILE_OPTIONS_PIC "-qpic")
+  set(CMAKE_${lang}_COMPILE_OPTIONS_PIE "-qpic")
   set(CMAKE_${lang}_RESPONSE_FILE_FLAG "-qoptfile=")
   set(CMAKE_${lang}_RESPONSE_FILE_LINK_FLAG "-qoptfile=")
+
+  set(CMAKE_${lang}_LINKER_WRAPPER_FLAG "-Wl,")
+  set(CMAKE_${lang}_LINKER_WRAPPER_FLAG_SEP ",")
 
   string(APPEND CMAKE_${lang}_FLAGS_DEBUG_INIT " -g")
   string(APPEND CMAKE_${lang}_FLAGS_RELEASE_INIT " -O")
@@ -29,6 +33,8 @@ macro(__compiler_xl lang)
   string(APPEND CMAKE_${lang}_FLAGS_RELWITHDEBINFO_INIT " -g")
   set(CMAKE_${lang}_CREATE_PREPROCESSED_SOURCE "<CMAKE_${lang}_COMPILER> <DEFINES> <INCLUDES> <FLAGS> -E <SOURCE> > <PREPROCESSED_SOURCE>")
   set(CMAKE_${lang}_CREATE_ASSEMBLY_SOURCE     "<CMAKE_${lang}_COMPILER> <DEFINES> <INCLUDES> <FLAGS> -S <SOURCE> -o <ASSEMBLY_SOURCE>")
+
+  set(CMAKE_DEPFILE_FLAGS_${lang} "-MF <DEPFILE> -qmakedep=gcc")
 
   # CMAKE_XL_CreateExportList is part of the AIX XL compilers but not the linux ones.
   # If we found the tool, we'll use it to create exports, otherwise stick with the regular
@@ -42,7 +48,7 @@ macro(__compiler_xl lang)
     # files so that we export only the symbols actually provided by the sources.
     set(CMAKE_${lang}_CREATE_SHARED_LIBRARY
       "${CMAKE_XL_CreateExportList} <OBJECT_DIR>/objects.exp <OBJECTS>"
-      "<CMAKE_${lang}_COMPILER> <CMAKE_SHARED_LIBRARY_${lang}_FLAGS> <LANGUAGE_COMPILE_FLAGS> <LINK_FLAGS> <CMAKE_SHARED_LIBRARY_CREATE_${lang}_FLAGS> -Wl,-bE:<OBJECT_DIR>/objects.exp <SONAME_FLAG><TARGET_SONAME> -o <TARGET> <OBJECTS> <LINK_LIBRARIES>"
+      "<CMAKE_${lang}_COMPILER> <CMAKE_SHARED_LIBRARY_${lang}_FLAGS> -Wl,-bE:<OBJECT_DIR>/objects.exp <LANGUAGE_COMPILE_FLAGS> <LINK_FLAGS> <CMAKE_SHARED_LIBRARY_CREATE_${lang}_FLAGS> <SONAME_FLAG><TARGET_SONAME> -o <TARGET> <OBJECTS> <LINK_LIBRARIES>"
       )
   endif()
 endmacro()

@@ -12,22 +12,20 @@
 #include "cmGeneratedFileStream.h"
 #include "cmGlobalGenerator.h"
 #include "cmMakefile.h"
+#include "cmMessageType.h"
 #include "cmStateTypes.h"
 #include "cmSystemTools.h"
 #include "cmTarget.h"
-#include "cmake.h"
 
 class cmExecutionStatus;
 
 #if defined(__HAIKU__)
-#include <FindDirectory.h>
-#include <StorageDefs.h>
+#  include <FindDirectory.h>
+#  include <StorageDefs.h>
 #endif
 
 cmExportCommand::cmExportCommand()
-  : cmCommand()
-  , ArgumentGroup()
-  , Targets(&Helper, "TARGETS")
+  : Targets(&Helper, "TARGETS")
   , Append(&Helper, "APPEND", &ArgumentGroup)
   , ExportSetName(&Helper, "EXPORT", &ArgumentGroup)
   , Namespace(&Helper, "NAMESPACE", &ArgumentGroup)
@@ -146,17 +144,6 @@ bool cmExportCommand::InitialPass(std::vector<std::string> const& args,
       }
 
       if (cmTarget* target = gg->FindTarget(currentTarget)) {
-        if (target->GetType() == cmStateEnums::OBJECT_LIBRARY) {
-          std::string reason;
-          if (!this->Makefile->GetGlobalGenerator()
-                 ->HasKnownObjectFileLocation(&reason)) {
-            std::ostringstream e;
-            e << "given OBJECT library \"" << currentTarget
-              << "\" which may not be exported" << reason << ".";
-            this->SetError(e.str());
-            return false;
-          }
-        }
         if (target->GetType() == cmStateEnums::UTILITY) {
           this->SetError("given custom target \"" + currentTarget +
                          "\" which may not be exported.");
@@ -248,7 +235,7 @@ bool cmExportCommand::HandlePackage(std::vector<std::string> const& args)
   }
   const char* packageExpr = "^[A-Za-z0-9_.-]+$";
   cmsys::RegularExpression packageRegex(packageExpr);
-  if (!packageRegex.find(package.c_str())) {
+  if (!packageRegex.find(package)) {
     std::ostringstream e;
     e << "PACKAGE given invalid package name \"" << package << "\".  "
       << "Package names must match \"" << packageExpr << "\".";
@@ -265,19 +252,19 @@ bool cmExportCommand::HandlePackage(std::vector<std::string> const& args)
   // We store the current build directory in the registry as a value
   // named by a hash of its own content.  This is deterministic and is
   // unique with high probability.
-  const char* outDir = this->Makefile->GetCurrentBinaryDirectory();
+  const std::string& outDir = this->Makefile->GetCurrentBinaryDirectory();
   std::string hash = cmSystemTools::ComputeStringMD5(outDir);
 #if defined(_WIN32) && !defined(__CYGWIN__)
-  this->StorePackageRegistryWin(package, outDir, hash.c_str());
+  this->StorePackageRegistryWin(package, outDir.c_str(), hash.c_str());
 #else
-  this->StorePackageRegistryDir(package, outDir, hash.c_str());
+  this->StorePackageRegistryDir(package, outDir.c_str(), hash.c_str());
 #endif
 
   return true;
 }
 
 #if defined(_WIN32) && !defined(__CYGWIN__)
-#include <windows.h>
+#  include <windows.h>
 
 void cmExportCommand::ReportRegistryError(std::string const& msg,
                                           std::string const& key, long err)
@@ -292,7 +279,7 @@ void cmExportCommand::ReportRegistryError(std::string const& msg,
     e << "Windows reported:\n"
       << "  " << cmsys::Encoding::ToNarrow(winmsg);
   }
-  this->Makefile->IssueMessage(cmake::WARNING, e.str());
+  this->Makefile->IssueMessage(MessageType::WARNING, e.str());
 }
 
 void cmExportCommand::StorePackageRegistryWin(std::string const& package,
@@ -328,7 +315,7 @@ void cmExportCommand::StorePackageRegistryDir(std::string const& package,
                                               const char* content,
                                               const char* hash)
 {
-#if defined(__HAIKU__)
+#  if defined(__HAIKU__)
   char dir[B_PATH_NAME_LENGTH];
   if (find_directory(B_USER_SETTINGS_DIRECTORY, -1, false, dir, sizeof(dir)) !=
       B_OK) {
@@ -337,7 +324,7 @@ void cmExportCommand::StorePackageRegistryDir(std::string const& package,
   std::string fname = dir;
   fname += "/cmake/packages/";
   fname += package;
-#else
+#  else
   std::string fname;
   if (!cmSystemTools::GetEnv("HOME", fname)) {
     return;
@@ -345,12 +332,12 @@ void cmExportCommand::StorePackageRegistryDir(std::string const& package,
   cmSystemTools::ConvertToUnixSlashes(fname);
   fname += "/.cmake/packages/";
   fname += package;
-#endif
+#  endif
   cmSystemTools::MakeDirectory(fname);
   fname += "/";
   fname += hash;
   if (!cmSystemTools::FileExists(fname)) {
-    cmGeneratedFileStream entry(fname.c_str(), true);
+    cmGeneratedFileStream entry(fname, true);
     if (entry) {
       entry << content << "\n";
     } else {
@@ -360,7 +347,7 @@ void cmExportCommand::StorePackageRegistryDir(std::string const& package,
         << "  " << fname << "\n"
         << cmSystemTools::GetLastSystemError() << "\n";
       /* clang-format on */
-      this->Makefile->IssueMessage(cmake::WARNING, e.str());
+      this->Makefile->IssueMessage(MessageType::WARNING, e.str());
     }
   }
 }

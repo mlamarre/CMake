@@ -7,13 +7,11 @@
 #include "cmSystemTools.h"
 
 #if defined(CMAKE_BUILD_WITH_CMAKE)
-#include "cm_codecvt.hxx"
-#include "cm_zlib.h"
+#  include "cm_codecvt.hxx"
+#  include "cm_zlib.h"
 #endif
 
 cmGeneratedFileStream::cmGeneratedFileStream(Encoding encoding)
-  : cmGeneratedFileStreamBase()
-  , Stream()
 {
 #ifdef CMAKE_BUILD_WITH_CMAKE
   if (encoding != codecvt::None) {
@@ -24,8 +22,8 @@ cmGeneratedFileStream::cmGeneratedFileStream(Encoding encoding)
 #endif
 }
 
-cmGeneratedFileStream::cmGeneratedFileStream(const char* name, bool quiet,
-                                             Encoding encoding)
+cmGeneratedFileStream::cmGeneratedFileStream(std::string const& name,
+                                             bool quiet, Encoding encoding)
   : cmGeneratedFileStreamBase(name)
   , Stream(TempName.c_str())
 {
@@ -54,7 +52,7 @@ cmGeneratedFileStream::~cmGeneratedFileStream()
   this->Okay = !this->fail();
 }
 
-cmGeneratedFileStream& cmGeneratedFileStream::Open(const char* name,
+cmGeneratedFileStream& cmGeneratedFileStream::Open(std::string const& name,
                                                    bool quiet, bool binaryFlag)
 {
   // Store the file name and construct the temporary file name.
@@ -105,22 +103,10 @@ void cmGeneratedFileStream::SetCompressionExtraExtension(bool ext)
 }
 
 cmGeneratedFileStreamBase::cmGeneratedFileStreamBase()
-  : Name()
-  , TempName()
-  , CopyIfDifferent(false)
-  , Okay(false)
-  , Compress(false)
-  , CompressExtraExtension(true)
 {
 }
 
-cmGeneratedFileStreamBase::cmGeneratedFileStreamBase(const char* name)
-  : Name()
-  , TempName()
-  , CopyIfDifferent(false)
-  , Okay(false)
-  , Compress(false)
-  , CompressExtraExtension(true)
+cmGeneratedFileStreamBase::cmGeneratedFileStreamBase(std::string const& name)
 {
   this->Open(name);
 }
@@ -130,7 +116,7 @@ cmGeneratedFileStreamBase::~cmGeneratedFileStreamBase()
   this->Close();
 }
 
-void cmGeneratedFileStreamBase::Open(const char* name)
+void cmGeneratedFileStreamBase::Open(std::string const& name)
 {
   // Save the original name of the file.
   this->Name = name;
@@ -168,12 +154,12 @@ bool cmGeneratedFileStreamBase::Close()
     // destination atomically.
     if (this->Compress) {
       std::string gzname = this->TempName + ".temp.gz";
-      if (this->CompressFile(this->TempName.c_str(), gzname.c_str())) {
-        this->RenameFile(gzname.c_str(), resname.c_str());
+      if (this->CompressFile(this->TempName, gzname)) {
+        this->RenameFile(gzname, resname);
       }
       cmSystemTools::RemoveFile(gzname);
     } else {
-      this->RenameFile(this->TempName.c_str(), resname.c_str());
+      this->RenameFile(this->TempName, resname);
     }
 
     replaced = true;
@@ -188,10 +174,10 @@ bool cmGeneratedFileStreamBase::Close()
 }
 
 #ifdef CMAKE_BUILD_WITH_CMAKE
-int cmGeneratedFileStreamBase::CompressFile(const char* oldname,
-                                            const char* newname)
+int cmGeneratedFileStreamBase::CompressFile(std::string const& oldname,
+                                            std::string const& newname)
 {
-  gzFile gf = gzopen(newname, "w");
+  gzFile gf = gzopen(newname.c_str(), "w");
   if (!gf) {
     return 0;
   }
@@ -214,16 +200,17 @@ int cmGeneratedFileStreamBase::CompressFile(const char* oldname,
   return 1;
 }
 #else
-int cmGeneratedFileStreamBase::CompressFile(const char*, const char*)
+int cmGeneratedFileStreamBase::CompressFile(std::string const&,
+                                            std::string const&)
 {
   return 0;
 }
 #endif
 
-int cmGeneratedFileStreamBase::RenameFile(const char* oldname,
-                                          const char* newname)
+int cmGeneratedFileStreamBase::RenameFile(std::string const& oldname,
+                                          std::string const& newname)
 {
-  return cmSystemTools::RenameFile(oldname, newname);
+  return cmSystemTools::RenameFile(oldname.c_str(), newname.c_str());
 }
 
 void cmGeneratedFileStream::SetName(const std::string& fname)

@@ -13,6 +13,7 @@
 #include "cmExportTryCompileFileGenerator.h"
 #include "cmGlobalGenerator.h"
 #include "cmMakefile.h"
+#include "cmMessageType.h"
 #include "cmOutputConverter.h"
 #include "cmPolicies.h"
 #include "cmState.h"
@@ -24,10 +25,18 @@
 static std::string const kCMAKE_C_COMPILER_EXTERNAL_TOOLCHAIN =
   "CMAKE_C_COMPILER_EXTERNAL_TOOLCHAIN";
 static std::string const kCMAKE_C_COMPILER_TARGET = "CMAKE_C_COMPILER_TARGET";
+static std::string const kCMAKE_C_LINK_NO_PIE_SUPPORTED =
+  "CMAKE_C_LINK_NO_PIE_SUPPORTED";
+static std::string const kCMAKE_C_LINK_PIE_SUPPORTED =
+  "CMAKE_C_LINK_PIE_SUPPORTED";
 static std::string const kCMAKE_CXX_COMPILER_EXTERNAL_TOOLCHAIN =
   "CMAKE_CXX_COMPILER_EXTERNAL_TOOLCHAIN";
 static std::string const kCMAKE_CXX_COMPILER_TARGET =
   "CMAKE_CXX_COMPILER_TARGET";
+static std::string const kCMAKE_CXX_LINK_NO_PIE_SUPPORTED =
+  "CMAKE_CXX_LINK_NO_PIE_SUPPORTED";
+static std::string const kCMAKE_CXX_LINK_PIE_SUPPORTED =
+  "CMAKE_CXX_LINK_PIE_SUPPORTED";
 static std::string const kCMAKE_ENABLE_EXPORTS = "CMAKE_ENABLE_EXPORTS";
 static std::string const kCMAKE_LINK_SEARCH_END_STATIC =
   "CMAKE_LINK_SEARCH_END_STATIC";
@@ -47,6 +56,12 @@ static std::string const kCMAKE_TRY_COMPILE_OSX_ARCHITECTURES =
 static std::string const kCMAKE_TRY_COMPILE_PLATFORM_VARIABLES =
   "CMAKE_TRY_COMPILE_PLATFORM_VARIABLES";
 static std::string const kCMAKE_WARN_DEPRECATED = "CMAKE_WARN_DEPRECATED";
+
+/* GHS Multi platform variables */
+static std::set<std::string> ghs_platform_vars{
+  "GHS_TARGET_PLATFORM", "GHS_PRIMARY_TARGET", "GHS_TOOLSET_ROOT",
+  "GHS_OS_ROOT",         "GHS_OS_DIR",         "GHS_BSP_NAME"
+};
 
 static void writeProperty(FILE* fout, std::string const& targetName,
                           std::string const& prop, std::string const& value)
@@ -82,17 +97,20 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
     if (strcmp(tt, cmState::GetTargetTypeName(cmStateEnums::EXECUTABLE)) ==
         0) {
       targetType = cmStateEnums::EXECUTABLE;
-    } else if (strcmp(tt, cmState::GetTargetTypeName(
-                            cmStateEnums::STATIC_LIBRARY)) == 0) {
+    } else if (strcmp(tt,
+                      cmState::GetTargetTypeName(
+                        cmStateEnums::STATIC_LIBRARY)) == 0) {
       targetType = cmStateEnums::STATIC_LIBRARY;
     } else {
       this->Makefile->IssueMessage(
-        cmake::FATAL_ERROR, std::string("Invalid value '") + tt +
+        MessageType::FATAL_ERROR,
+        std::string("Invalid value '") + tt +
           "' for "
           "CMAKE_TRY_COMPILE_TARGET_TYPE.  Only "
           "'" +
-          cmState::GetTargetTypeName(cmStateEnums::EXECUTABLE) + "' and "
-                                                                 "'" +
+          cmState::GetTargetTypeName(cmStateEnums::EXECUTABLE) +
+          "' and "
+          "'" +
           cmState::GetTargetTypeName(cmStateEnums::STATIC_LIBRARY) +
           "' "
           "are allowed.");
@@ -118,6 +136,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
   std::string cxxExtensions;
   std::string cudaExtensions;
   std::vector<std::string> targets;
+  std::vector<std::string> linkOptions;
   std::string libsToLink = " ";
   bool useOldLinkLibs = true;
   char targetNameBuf[64];
@@ -141,6 +160,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
     DoingNone,
     DoingCMakeFlags,
     DoingCompileDefinitions,
+    DoingLinkOptions,
     DoingLinkLibraries,
     DoingOutputVariable,
     DoingCopyFile,
@@ -162,6 +182,8 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
       doing = DoingCMakeFlags;
     } else if (argv[i] == "COMPILE_DEFINITIONS") {
       doing = DoingCompileDefinitions;
+    } else if (argv[i] == "LINK_OPTIONS") {
+      doing = DoingLinkOptions;
     } else if (argv[i] == "LINK_LIBRARIES") {
       doing = DoingLinkLibraries;
       useOldLinkLibs = false;
@@ -205,6 +227,8 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
       cmakeFlags.push_back(argv[i]);
     } else if (doing == DoingCompileDefinitions) {
       compileDefs.push_back(argv[i]);
+    } else if (doing == DoingLinkOptions) {
+      linkOptions.push_back(argv[i]);
     } else if (doing == DoingLinkLibraries) {
       libsToLink += "\"" + cmSystemTools::TrimWhitespace(argv[i]) + "\" ";
       if (cmTarget* tgt = this->Makefile->FindTargetToUse(argv[i])) {
@@ -221,11 +245,12 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
             CM_FALLTHROUGH;
           default:
             this->Makefile->IssueMessage(
-              cmake::FATAL_ERROR,
+              MessageType::FATAL_ERROR,
               "Only libraries may be used as try_compile or try_run IMPORTED "
               "LINK_LIBRARIES.  Got " +
-                std::string(tgt->GetName()) + " of "
-                                              "type " +
+                std::string(tgt->GetName()) +
+                " of "
+                "type " +
                 cmState::GetTargetTypeName(tgt->GetType()) + ".");
             return -1;
         }
@@ -279,93 +304,95 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
     } else {
       std::ostringstream m;
       m << "try_compile given unknown argument \"" << argv[i] << "\".";
-      this->Makefile->IssueMessage(cmake::AUTHOR_WARNING, m.str());
+      this->Makefile->IssueMessage(MessageType::AUTHOR_WARNING, m.str());
     }
   }
 
   if (didCopyFile && copyFile.empty()) {
-    this->Makefile->IssueMessage(cmake::FATAL_ERROR,
+    this->Makefile->IssueMessage(MessageType::FATAL_ERROR,
                                  "COPY_FILE must be followed by a file path");
     return -1;
   }
 
   if (didCopyFileError && copyFileError.empty()) {
     this->Makefile->IssueMessage(
-      cmake::FATAL_ERROR,
+      MessageType::FATAL_ERROR,
       "COPY_FILE_ERROR must be followed by a variable name");
     return -1;
   }
 
   if (didCopyFileError && !didCopyFile) {
     this->Makefile->IssueMessage(
-      cmake::FATAL_ERROR, "COPY_FILE_ERROR may be used only with COPY_FILE");
+      MessageType::FATAL_ERROR,
+      "COPY_FILE_ERROR may be used only with COPY_FILE");
     return -1;
   }
 
   if (didOutputVariable && outputVariable.empty()) {
     this->Makefile->IssueMessage(
-      cmake::FATAL_ERROR,
+      MessageType::FATAL_ERROR,
       "OUTPUT_VARIABLE must be followed by a variable name");
     return -1;
   }
 
   if (useSources && sources.empty()) {
     this->Makefile->IssueMessage(
-      cmake::FATAL_ERROR,
+      MessageType::FATAL_ERROR,
       "SOURCES must be followed by at least one source file");
     return -1;
   }
 
   if (didCStandard && !this->SrcFileSignature) {
     this->Makefile->IssueMessage(
-      cmake::FATAL_ERROR, "C_STANDARD allowed only in source file signature.");
+      MessageType::FATAL_ERROR,
+      "C_STANDARD allowed only in source file signature.");
     return -1;
   }
   if (didCxxStandard && !this->SrcFileSignature) {
     this->Makefile->IssueMessage(
-      cmake::FATAL_ERROR,
+      MessageType::FATAL_ERROR,
       "CXX_STANDARD allowed only in source file signature.");
     return -1;
   }
   if (didCudaStandard && !this->SrcFileSignature) {
     this->Makefile->IssueMessage(
-      cmake::FATAL_ERROR,
+      MessageType::FATAL_ERROR,
       "CUDA_STANDARD allowed only in source file signature.");
     return -1;
   }
   if (didCStandardRequired && !this->SrcFileSignature) {
     this->Makefile->IssueMessage(
-      cmake::FATAL_ERROR,
+      MessageType::FATAL_ERROR,
       "C_STANDARD_REQUIRED allowed only in source file signature.");
     return -1;
   }
   if (didCxxStandardRequired && !this->SrcFileSignature) {
     this->Makefile->IssueMessage(
-      cmake::FATAL_ERROR,
+      MessageType::FATAL_ERROR,
       "CXX_STANDARD_REQUIRED allowed only in source file signature.");
     return -1;
   }
   if (didCudaStandardRequired && !this->SrcFileSignature) {
     this->Makefile->IssueMessage(
-      cmake::FATAL_ERROR,
+      MessageType::FATAL_ERROR,
       "CUDA_STANDARD_REQUIRED allowed only in source file signature.");
     return -1;
   }
   if (didCExtensions && !this->SrcFileSignature) {
     this->Makefile->IssueMessage(
-      cmake::FATAL_ERROR,
+      MessageType::FATAL_ERROR,
       "C_EXTENSIONS allowed only in source file signature.");
     return -1;
   }
   if (didCxxExtensions && !this->SrcFileSignature) {
     this->Makefile->IssueMessage(
-      cmake::FATAL_ERROR,
+      MessageType::FATAL_ERROR,
       "CXX_EXTENSIONS allowed only in source file signature.");
     return -1;
   }
   if (didCudaExtensions && !this->SrcFileSignature) {
     this->Makefile->IssueMessage(
-      cmake::FATAL_ERROR,
+      MessageType::FATAL_ERROR,
       "CUDA_EXTENSIONS allowed only in source file signature.");
     return -1;
   }
@@ -379,13 +406,13 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
     // only valid for srcfile signatures
     if (!compileDefs.empty()) {
       this->Makefile->IssueMessage(
-        cmake::FATAL_ERROR,
+        MessageType::FATAL_ERROR,
         "COMPILE_DEFINITIONS specified on a srcdir type TRY_COMPILE");
       return -1;
     }
     if (!copyFile.empty()) {
       this->Makefile->IssueMessage(
-        cmake::FATAL_ERROR,
+        MessageType::FATAL_ERROR,
         "COPY_FILE specified on a srcdir type TRY_COMPILE");
       return -1;
     }
@@ -398,7 +425,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
     std::ostringstream e;
     e << "Attempt at a recursive or nested TRY_COMPILE in directory\n"
       << "  " << this->BinaryDirectory << "\n";
-    this->Makefile->IssueMessage(cmake::FATAL_ERROR, e.str());
+    this->Makefile->IssueMessage(MessageType::FATAL_ERROR, e.str());
     return -1;
   }
 
@@ -432,7 +459,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
         gg->GetEnabledLanguages(langs);
         err << cmJoin(langs, " ");
         err << "\nSee project() command to enable other languages.";
-        this->Makefile->IssueMessage(cmake::FATAL_ERROR, err.str());
+        this->Makefile->IssueMessage(MessageType::FATAL_ERROR, err.str());
         return -1;
       }
     }
@@ -453,7 +480,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
         << "  " << outFileName << "\n"
         << cmSystemTools::GetLastSystemError();
       /* clang-format on */
-      this->Makefile->IssueMessage(cmake::FATAL_ERROR, e.str());
+      this->Makefile->IssueMessage(MessageType::FATAL_ERROR, e.str());
       return -1;
     }
 
@@ -487,8 +514,9 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
       const char* flags = this->Makefile->GetDefinition(langFlags);
       fprintf(fout, "set(CMAKE_%s_FLAGS %s)\n", li.c_str(),
               cmOutputConverter::EscapeForCMake(flags ? flags : "").c_str());
-      fprintf(fout, "set(CMAKE_%s_FLAGS \"${CMAKE_%s_FLAGS}"
-                    " ${COMPILE_DEFINITIONS}\")\n",
+      fprintf(fout,
+              "set(CMAKE_%s_FLAGS \"${CMAKE_%s_FLAGS}"
+              " ${COMPILE_DEFINITIONS}\")\n",
               li.c_str(), li.c_str());
     }
     switch (this->Makefile->GetPolicyStatus(cmPolicies::CMP0066)) {
@@ -503,7 +531,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
             "(e.g. CMAKE_C_FLAGS_DEBUG) in the test project."
             ;
           /* clang-format on */
-          this->Makefile->IssueMessage(cmake::AUTHOR_WARNING, w.str());
+          this->Makefile->IssueMessage(MessageType::AUTHOR_WARNING, w.str());
         }
       case cmPolicies::OLD:
         // OLD behavior is to do nothing.
@@ -511,7 +539,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
       case cmPolicies::REQUIRED_IF_USED:
       case cmPolicies::REQUIRED_ALWAYS:
         this->Makefile->IssueMessage(
-          cmake::FATAL_ERROR,
+          MessageType::FATAL_ERROR,
           cmPolicies::GetRequiredPolicyError(cmPolicies::CMP0066));
         CM_FALLTHROUGH;
       case cmPolicies::NEW: {
@@ -540,7 +568,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
             "in the test project."
             ;
           /* clang-format on */
-          this->Makefile->IssueMessage(cmake::AUTHOR_WARNING, w.str());
+          this->Makefile->IssueMessage(MessageType::AUTHOR_WARNING, w.str());
         }
       case cmPolicies::OLD:
         // OLD behavior is to do nothing.
@@ -548,7 +576,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
       case cmPolicies::REQUIRED_IF_USED:
       case cmPolicies::REQUIRED_ALWAYS:
         this->Makefile->IssueMessage(
-          cmake::FATAL_ERROR,
+          MessageType::FATAL_ERROR,
           cmPolicies::GetRequiredPolicyError(cmPolicies::CMP0056));
         CM_FALLTHROUGH;
       case cmPolicies::NEW:
@@ -563,14 +591,17 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
         }
         break;
     }
-    fprintf(fout, "set(CMAKE_EXE_LINKER_FLAGS \"${CMAKE_EXE_LINKER_FLAGS}"
-                  " ${EXE_LINKER_FLAGS}\")\n");
+    fprintf(fout,
+            "set(CMAKE_EXE_LINKER_FLAGS \"${CMAKE_EXE_LINKER_FLAGS}"
+            " ${EXE_LINKER_FLAGS}\")\n");
     fprintf(fout, "include_directories(${INCLUDE_DIRECTORIES})\n");
     fprintf(fout, "set(CMAKE_SUPPRESS_REGENERATION 1)\n");
     fprintf(fout, "link_directories(${LINK_DIRECTORIES})\n");
     // handle any compile flags we need to pass on
     if (!compileDefs.empty()) {
-      fprintf(fout, "add_definitions(%s)\n", cmJoin(compileDefs, " ").c_str());
+      // Pass using bracket arguments to preserve content.
+      fprintf(fout, "add_definitions([==[%s]==])\n",
+              cmJoin(compileDefs, "]==] [==[").c_str());
     }
 
     /* Use a random file name to avoid rapid creation and deletion
@@ -580,12 +611,13 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
 
     if (!targets.empty()) {
       std::string fname = "/" + std::string(targetName) + "Targets.cmake";
-      cmExportTryCompileFileGenerator tcfg(gg, targets, this->Makefile);
+      cmExportTryCompileFileGenerator tcfg(gg, targets, this->Makefile,
+                                           testLangs);
       tcfg.SetExportFile((this->BinaryDirectory + fname).c_str());
       tcfg.SetConfig(tcConfig);
 
       if (!tcfg.GenerateImportFile()) {
-        this->Makefile->IssueMessage(cmake::FATAL_ERROR,
+        this->Makefile->IssueMessage(MessageType::FATAL_ERROR,
                                      "could not write export file.");
         fclose(fout);
         return -1;
@@ -620,6 +652,16 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
         vars.insert(varList.begin(), varList.end());
       }
 
+      if (this->Makefile->GetPolicyStatus(cmPolicies::CMP0083) ==
+          cmPolicies::NEW) {
+        // To ensure full support of PIE, propagate cache variables
+        // driving the link options
+        vars.insert(kCMAKE_C_LINK_PIE_SUPPORTED);
+        vars.insert(kCMAKE_C_LINK_NO_PIE_SUPPORTED);
+        vars.insert(kCMAKE_CXX_LINK_PIE_SUPPORTED);
+        vars.insert(kCMAKE_CXX_LINK_NO_PIE_SUPPORTED);
+      }
+
       /* for the TRY_COMPILEs we want to be able to specify the architecture.
          So the user can set CMAKE_OSX_ARCHITECTURES to i386;ppc and then set
          CMAKE_TRY_COMPILE_OSX_ARCHITECTURES first to i386 and then to ppc to
@@ -645,6 +687,13 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
     /* Set the appropriate policy information for ENABLE_EXPORTS */
     fprintf(fout, "cmake_policy(SET CMP0065 %s)\n",
             this->Makefile->GetPolicyStatus(cmPolicies::CMP0065) ==
+                cmPolicies::NEW
+              ? "NEW"
+              : "OLD");
+
+    /* Set the appropriate policy information for PIE link flags */
+    fprintf(fout, "cmake_policy(SET CMP0083 %s)\n",
+            this->Makefile->GetPolicyStatus(cmPolicies::CMP0083) ==
                 cmPolicies::NEW
               ? "NEW"
               : "OLD");
@@ -696,7 +745,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
         case cmPolicies::REQUIRED_IF_USED:
         case cmPolicies::REQUIRED_ALWAYS:
           this->Makefile->IssueMessage(
-            cmake::FATAL_ERROR,
+            MessageType::FATAL_ERROR,
             cmPolicies::GetRequiredPolicyError(cmPolicies::CMP0067));
         case cmPolicies::NEW:
           // NEW behavior is to honor the language standard variables.
@@ -758,7 +807,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
       for (std::string const& vi : this->WarnCMP0067) {
         w << "  " << vi << "\n";
       }
-      this->Makefile->IssueMessage(cmake::AUTHOR_WARNING, w.str());
+      this->Makefile->IssueMessage(MessageType::AUTHOR_WARNING, w.str());
     }
 
     if (testC) {
@@ -800,6 +849,23 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
       }
     }
 
+    if (!linkOptions.empty()) {
+      std::vector<std::string> options;
+      options.reserve(linkOptions.size());
+      for (const auto& option : linkOptions) {
+        options.emplace_back(cmOutputConverter::EscapeForCMake(option));
+      }
+
+      if (targetType == cmStateEnums::STATIC_LIBRARY) {
+        fprintf(fout,
+                "set_property(TARGET %s PROPERTY STATIC_LIBRARY_OPTIONS %s)\n",
+                targetName.c_str(), cmJoin(options, " ").c_str());
+      } else {
+        fprintf(fout, "target_link_options(%s PRIVATE %s)\n",
+                targetName.c_str(), cmJoin(options, " ").c_str());
+      }
+    }
+
     if (useOldLinkLibs) {
       fprintf(fout, "target_link_libraries(%s ${LINK_LIBRARIES})\n",
               targetName.c_str());
@@ -811,13 +877,24 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
     projectName = "CMAKE_TRY_COMPILE";
   }
 
+  if (this->Makefile->GetState()->UseGhsMultiIDE()) {
+    // Forward the GHS variables to the inner project cache.
+    for (std::string const& var : ghs_platform_vars) {
+      if (const char* val = this->Makefile->GetDefinition(var)) {
+        std::string flag = "-D" + var + "=" + val;
+        cmakeFlags.push_back(std::move(flag));
+      }
+    }
+  }
+
   bool erroroc = cmSystemTools::GetErrorOccuredFlag();
   cmSystemTools::ResetErrorOccuredFlag();
   std::string output;
   // actually do the try compile now that everything is setup
   int res = this->Makefile->TryCompile(
     sourceDirectory, this->BinaryDirectory, projectName, targetName,
-    this->SrcFileSignature, &cmakeFlags, output);
+    this->SrcFileSignature, cmake::NO_BUILD_PARALLEL_LEVEL, &cmakeFlags,
+    output);
   if (erroroc) {
     cmSystemTools::SetErrorOccured();
   }
@@ -849,7 +926,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv,
           emsg << this->FindErrorMessage.c_str();
         }
         if (copyFileError.empty()) {
-          this->Makefile->IssueMessage(cmake::FATAL_ERROR, emsg.str());
+          this->Makefile->IssueMessage(MessageType::FATAL_ERROR, emsg.str());
           return -1;
         }
         copyFileErrorMessage = emsg.str();
@@ -946,12 +1023,12 @@ void cmCoreTryCompile::FindOutputFile(const std::string& targetName,
     tmp += config;
     searchDirs.push_back(std::move(tmp));
   }
-  searchDirs.push_back("/Debug");
+  searchDirs.emplace_back("/Debug");
 #if defined(__APPLE__)
   std::string app = "/Debug/" + targetName + ".app";
   searchDirs.push_back(std::move(app));
 #endif
-  searchDirs.push_back("/Development");
+  searchDirs.emplace_back("/Development");
 
   for (std::string const& sdir : searchDirs) {
     std::string command = this->BinaryDirectory;

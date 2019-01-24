@@ -28,7 +28,7 @@ public:
   /** Checking instances need to know the build directory name and the
       relative path from the build directory to the target file.  */
   cmDependsC();
-  cmDependsC(cmLocalGenerator* lg, const char* targetDir,
+  cmDependsC(cmLocalGenerator* lg, const std::string& targetDir,
              const std::string& lang,
              const std::map<std::string, DependencyVector>* validDeps);
 
@@ -42,7 +42,7 @@ protected:
                          std::ostream& internalDepends) override;
 
   // Method to scan a single file.
-  void Scan(std::istream& is, const char* directory,
+  void Scan(std::istream& is, const std::string& directory,
             const std::string& fullName);
 
   // Regular expression to identify C preprocessor include directives.
@@ -75,16 +75,13 @@ public:
 
   struct cmIncludeLines
   {
-    cmIncludeLines()
-      : Used(false)
-    {
-    }
+    cmIncludeLines() {}
     std::vector<UnscannedEntry> UnscannedEntries;
-    bool Used;
+    bool Used = false;
   };
 
 protected:
-  const std::map<std::string, DependencyVector>* ValidDeps;
+  const std::map<std::string, DependencyVector>* ValidDeps = nullptr;
   std::set<std::string> Encountered;
   std::queue<UnscannedEntry> Unscanned;
 

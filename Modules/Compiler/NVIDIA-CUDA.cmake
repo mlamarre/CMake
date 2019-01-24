@@ -1,4 +1,5 @@
 set(CMAKE_CUDA_VERBOSE_FLAG "-v")
+set(CMAKE_CUDA_VERBOSE_COMPILE_FLAG "-Xcompiler=-v")
 
 if(NOT "x${CMAKE_CUDA_SIMULATE_ID}" STREQUAL "xMSVC")
   set(CMAKE_CUDA_COMPILE_OPTIONS_PIE -Xcompiler=-fPIE)
@@ -33,3 +34,9 @@ else()
   endif()
 
 endif()
+
+# FIXME: investigate use of --options-file.
+# Tell Makefile generator that nvcc does not support @<rspfile> syntax.
+set(CMAKE_CUDA_USE_RESPONSE_FILE_FOR_INCLUDES 0)
+set(CMAKE_CUDA_USE_RESPONSE_FILE_FOR_LIBRARIES 0)
+set(CMAKE_CUDA_USE_RESPONSE_FILE_FOR_OBJECTS 0)

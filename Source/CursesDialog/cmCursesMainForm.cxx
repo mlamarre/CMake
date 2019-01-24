@@ -20,15 +20,16 @@
 #include <algorithm>
 #include <stdio.h>
 #include <string.h>
+#include <utility>
 
 inline int ctrl(int z)
 {
   return (z & 037);
 }
 
-cmCursesMainForm::cmCursesMainForm(std::vector<std::string> const& args,
+cmCursesMainForm::cmCursesMainForm(std::vector<std::string> args,
                                    int initWidth)
-  : Args(args)
+  : Args(std::move(args))
   , InitialWidth(initWidth)
 {
   this->NumberOfPages = 0;
@@ -37,11 +38,11 @@ cmCursesMainForm::cmCursesMainForm(std::vector<std::string> const& args,
   this->AdvancedMode = false;
   this->NumberOfVisibleEntries = 0;
   this->OkToGenerate = false;
-  this->HelpMessage.push_back(
+  this->HelpMessage.emplace_back(
     "Welcome to ccmake, curses based user interface for CMake.");
-  this->HelpMessage.push_back("");
-  this->HelpMessage.push_back(s_ConstHelpMessage);
-  this->CMakeInstance = new cmake(cmake::RoleProject);
+  this->HelpMessage.emplace_back();
+  this->HelpMessage.emplace_back(s_ConstHelpMessage);
+  this->CMakeInstance = new cmake(cmake::RoleProject, cmState::Project);
   this->CMakeInstance->SetCMakeEditCommand(
     cmSystemTools::GetCMakeCursesCommand());
 
@@ -371,8 +372,9 @@ void cmCursesMainForm::PrintKeys(int process /* = 0 */)
         sprintf(thirdLine, toggleKeyInstruction,
                 this->AdvancedMode ? "On" : "Off");
       }
-      sprintf(secondLine, "Press [h] for help           "
-                          "Press [q] to quit without generating");
+      sprintf(secondLine,
+              "Press [h] for help           "
+              "Press [q] to quit without generating");
     }
 
     curses_move(y - 4, 0);
@@ -412,9 +414,10 @@ void cmCursesMainForm::UpdateStatusBar(const char* message)
     curses_clear();
     curses_move(0, 0);
     char fmt[] = "Window is too small. A size of at least %dx%d is required.";
-    printw(fmt, (cmCursesMainForm::MIN_WIDTH < this->InitialWidth
-                   ? this->InitialWidth
-                   : cmCursesMainForm::MIN_WIDTH),
+    printw(fmt,
+           (cmCursesMainForm::MIN_WIDTH < this->InitialWidth
+              ? this->InitialWidth
+              : cmCursesMainForm::MIN_WIDTH),
            cmCursesMainForm::MIN_HEIGHT);
     touchwin(stdscr);
     wrefresh(stdscr);
@@ -475,7 +478,7 @@ void cmCursesMainForm::UpdateStatusBar(const char* message)
       strncpy(bar + curFieldLen + 2, help, width - curFieldLen - 2);
       if (curFieldLen + helpLen + 2 < width) {
         memset(bar + curFieldLen + helpLen + 2, ' ',
-               width - curFieldLen + helpLen + 2);
+               width - (curFieldLen + helpLen + 2));
       }
     }
   }
@@ -568,10 +571,11 @@ int cmCursesMainForm::Configure(int noconfigure)
     }
     int xx, yy;
     getmaxyx(stdscr, yy, xx);
-    cmCursesLongMessageForm* msgs = new cmCursesLongMessageForm(
-      this->Errors, cmSystemTools::GetErrorOccuredFlag()
-        ? "Errors occurred during the last pass."
-        : "CMake produced the following output.");
+    cmCursesLongMessageForm* msgs =
+      new cmCursesLongMessageForm(this->Errors,
+                                  cmSystemTools::GetErrorOccuredFlag()
+                                    ? "Errors occurred during the last pass."
+                                    : "CMake produced the following output.");
     // reset error condition
     cmSystemTools::ResetErrorOccuredFlag();
     CurrentForm = msgs;
@@ -649,7 +653,7 @@ int cmCursesMainForm::Generate()
 
 void cmCursesMainForm::AddError(const char* message, const char* /*unused*/)
 {
-  this->Errors.push_back(message);
+  this->Errors.emplace_back(message);
 }
 
 void cmCursesMainForm::RemoveEntry(const char* value)
@@ -706,7 +710,7 @@ void cmCursesMainForm::FixValue(cmStateEnums::CacheEntryType type,
     cmSystemTools::ConvertToUnixSlashes(out);
   }
   if (type == cmStateEnums::BOOL) {
-    if (cmSystemTools::IsOff(out.c_str())) {
+    if (cmSystemTools::IsOff(out)) {
       out = "OFF";
     } else {
       out = "ON";

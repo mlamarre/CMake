@@ -1,24 +1,26 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
    file Copyright.txt or https://cmake.org/licensing for details.  */
-#include "cmQtAutoGen.h"
 #include "cmQtAutoGeneratorMocUic.h"
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <functional>
 #include <list>
 #include <memory>
+#include <set>
 #include <sstream>
 #include <utility>
 
 #include "cmAlgorithms.h"
 #include "cmCryptoHash.h"
 #include "cmMakefile.h"
+#include "cmQtAutoGen.h"
 #include "cmSystemTools.h"
 #include "cmake.h"
 
 #if defined(__APPLE__)
-#include <unistd.h>
+#  include <unistd.h>
 #endif
 
 // -- Class methods
@@ -26,7 +28,7 @@
 std::string cmQtAutoGeneratorMocUic::BaseSettingsT::AbsoluteBuildPath(
   std::string const& relativePath) const
 {
-  return cmSystemTools::CollapseCombinedPath(AutogenBuildDir, relativePath);
+  return FileSys->CollapseCombinedPath(AutogenBuildDir, relativePath);
 }
 
 /**
@@ -106,7 +108,7 @@ std::string cmQtAutoGeneratorMocUic::MocSettingsT::FindIncludedFile(
     std::string testPath = sourcePath;
     testPath += includeString;
     if (FileSys->FileExists(testPath)) {
-      return FileSys->RealPath(testPath);
+      return FileSys->GetRealPath(testPath);
     }
   }
   // Search in include directories
@@ -115,7 +117,7 @@ std::string cmQtAutoGeneratorMocUic::MocSettingsT::FindIncludedFile(
     fullPath.push_back('/');
     fullPath += includeString;
     if (FileSys->FileExists(fullPath)) {
-      return FileSys->RealPath(fullPath);
+      return FileSys->GetRealPath(fullPath);
     }
   }
   // Return empty string
@@ -166,9 +168,9 @@ void cmQtAutoGeneratorMocUic::JobParseT::Process(WorkerT& wrk)
     MetaT meta;
     if (wrk.FileSys().FileRead(meta.Content, FileName, &error)) {
       if (!meta.Content.empty()) {
-        meta.FileDir = SubDirPrefix(FileName);
+        meta.FileDir = wrk.FileSys().SubDirPrefix(FileName);
         meta.FileBase =
-          cmSystemTools::GetFilenameWithoutLastExtension(FileName);
+          wrk.FileSys().GetFilenameWithoutLastExtension(FileName);
 
         bool success = true;
         if (AutoMoc) {
@@ -222,9 +224,9 @@ bool cmQtAutoGeneratorMocUic::JobParseT::ParseMocSource(WorkerT& wrk,
       cmsys::RegularExpressionMatch match;
       while (wrk.Moc().RegExpInclude.find(contentChars, match)) {
         std::string incString = match.match(2);
-        std::string incDir(SubDirPrefix(incString));
+        std::string incDir(wrk.FileSys().SubDirPrefix(incString));
         std::string incBase =
-          cmSystemTools::GetFilenameWithoutLastExtension(incString);
+          wrk.FileSys().GetFilenameWithoutLastExtension(incString);
         if (cmHasLiteralPrefix(incBase, "moc_")) {
           // moc_<BASE>.cxx
           // Remove the moc_ part from the base name
@@ -434,7 +436,7 @@ bool cmQtAutoGeneratorMocUic::JobParseT::ParseMocSource(WorkerT& wrk,
     JobHandleT jobHandle(new JobMocT(std::move(jobPre.SourceFile), FileName,
                                      std::move(jobPre.IncludeString)));
     if (jobPre.self) {
-      // Read depdendencies from this source
+      // Read dependencies from this source
       static_cast<JobMocT&>(*jobHandle).FindDependencies(wrk, meta.Content);
     }
     if (!wrk.Gen().ParallelJobPushMoc(jobHandle)) {
@@ -452,7 +454,7 @@ bool cmQtAutoGeneratorMocUic::JobParseT::ParseMocHeader(WorkerT& wrk,
   if (!macroName.empty()) {
     JobHandleT jobHandle(
       new JobMocT(std::string(FileName), std::string(), std::string()));
-    // Read depdendencies from this source
+    // Read dependencies from this source
     static_cast<JobMocT&>(*jobHandle).FindDependencies(wrk, meta.Content);
     success = wrk.Gen().ParallelJobPushMoc(jobHandle);
   }
@@ -487,7 +489,7 @@ std::string cmQtAutoGeneratorMocUic::JobParseT::MocFindIncludedHeader(
   }
   // Sanitize
   if (!header.empty()) {
-    header = wrk.FileSys().RealPath(header);
+    header = wrk.FileSys().GetRealPath(header);
   }
   return header;
 }
@@ -533,12 +535,12 @@ std::string cmQtAutoGeneratorMocUic::JobParseT::UicFindIncludedFile(
 {
   std::string res;
   std::string searchFile =
-    cmSystemTools::GetFilenameWithoutLastExtension(includeString).substr(3);
+    wrk.FileSys().GetFilenameWithoutLastExtension(includeString).substr(3);
   searchFile += ".ui";
   // Collect search paths list
   std::deque<std::string> testFiles;
   {
-    std::string const searchPath = SubDirPrefix(includeString);
+    std::string const searchPath = wrk.FileSys().SubDirPrefix(includeString);
 
     std::string searchFileFull;
     if (!searchPath.empty()) {
@@ -569,7 +571,7 @@ std::string cmQtAutoGeneratorMocUic::JobParseT::UicFindIncludedFile(
   // Search for the .ui file!
   for (std::string const& testFile : testFiles) {
     if (wrk.FileSys().FileExists(testFile)) {
-      res = wrk.FileSys().RealPath(testFile);
+      res = wrk.FileSys().GetRealPath(testFile);
       break;
     }
   }
@@ -676,9 +678,9 @@ void cmQtAutoGeneratorMocUic::JobMocT::Process(WorkerT& wrk)
     BuildFile += '/';
     BuildFile += IncludeString;
   } else {
-    std::string rel = wrk.Base().FilePathChecksum.getPart(SourceFile);
+    std::string rel = wrk.FileSys().GetFilePathChecksum(SourceFile);
     rel += "/moc_";
-    rel += cmSystemTools::GetFilenameWithoutLastExtension(SourceFile);
+    rel += wrk.FileSys().GetFilenameWithoutLastExtension(SourceFile);
     rel += ".cpp";
     // Register relative file path
     wrk.Gen().ParallelMocAutoRegister(rel);
@@ -798,7 +800,7 @@ bool cmQtAutoGeneratorMocUic::JobMocT::UpdateRequired(WorkerT& wrk)
     }
     // Check dependency timestamps
     std::string error;
-    std::string sourceDir = SubDirPrefix(SourceFile);
+    std::string sourceDir = wrk.FileSys().SubDirPrefix(SourceFile);
     for (std::string const& depFileRel : Depends) {
       std::string depFileAbs =
         wrk.Moc().FindIncludedFile(sourceDir, depFileRel);
@@ -842,10 +844,10 @@ void cmQtAutoGeneratorMocUic::JobMocT::GenerateMoc(WorkerT& wrk)
                wrk.Moc().AllOptions.end());
     // Add predefs include
     if (!wrk.Moc().PredefsFileAbs.empty()) {
-      cmd.push_back("--include");
+      cmd.emplace_back("--include");
       cmd.push_back(wrk.Moc().PredefsFileAbs);
     }
-    cmd.push_back("-o");
+    cmd.emplace_back("-o");
     cmd.push_back(BuildFile);
     cmd.push_back(SourceFile);
 
@@ -853,8 +855,12 @@ void cmQtAutoGeneratorMocUic::JobMocT::GenerateMoc(WorkerT& wrk)
     ProcessResultT result;
     if (wrk.RunProcess(GeneratorT::MOC, result, cmd)) {
       // Moc command success
+      // Print moc output
+      if (!result.StdOut.empty()) {
+        wrk.LogInfo(GeneratorT::MOC, result.StdOut);
+      }
+      // Notify the generator that a not included file changed (on demand)
       if (IncludeString.empty()) {
-        // Notify the generator that a not included file changed
         wrk.Gen().ParallelMocAutoUpdated();
       }
     } else {
@@ -957,15 +963,19 @@ void cmQtAutoGeneratorMocUic::JobUicT::GenerateUic(WorkerT& wrk)
       }
       cmd.insert(cmd.end(), allOpts.begin(), allOpts.end());
     }
-    cmd.push_back("-o");
+    cmd.emplace_back("-o");
     cmd.push_back(BuildFile);
     cmd.push_back(SourceFile);
 
     ProcessResultT result;
     if (wrk.RunProcess(GeneratorT::UIC, result, cmd)) {
-      // Success
+      // Uic command success
+      // Print uic output
+      if (!result.StdOut.empty()) {
+        wrk.LogInfo(GeneratorT::UIC, result.StdOut);
+      }
     } else {
-      // Command failed
+      // Uic command failed
       {
         std::string emsg = "The uic process failed to compile\n  ";
         emsg += Quoted(SourceFile);
@@ -1122,11 +1132,6 @@ void cmQtAutoGeneratorMocUic::WorkerT::UVProcessFinished()
 cmQtAutoGeneratorMocUic::cmQtAutoGeneratorMocUic()
   : Base_(&FileSys())
   , Moc_(&FileSys())
-  , Stage_(StageT::SETTINGS_READ)
-  , JobsRemain_(0)
-  , JobError_(false)
-  , JobThreadsAbort_(false)
-  , MocAutoFileUpdated_(false)
 {
   // Precompile regular expressions
   Moc_.RegExpInclude.compile(
@@ -1196,7 +1201,7 @@ bool cmQtAutoGeneratorMocUic::Init(cmMakefile* makefile)
       valueConf = makefile->GetDefinition(keyConf);
     }
     if (valueConf == nullptr) {
-      valueConf = makefile->GetSafeDefinition(key);
+      return makefile->GetSafeDefinition(key);
     }
     return std::string(valueConf);
   };
@@ -1208,16 +1213,17 @@ bool cmQtAutoGeneratorMocUic::Init(cmMakefile* makefile)
   };
 
   // -- Read info file
-  if (!makefile->ReadListFile(InfoFile().c_str())) {
+  if (!makefile->ReadListFile(InfoFile())) {
     Log().ErrorFile(GeneratorT::GEN, InfoFile(), "File processing failed");
     return false;
   }
 
   // -- Meta
+  Log().RaiseVerbosity(InfoGet("AM_VERBOSITY"));
   Base_.MultiConfig = InfoGetBool("AM_MULTI_CONFIG");
   {
     unsigned long num = Base_.NumThreads;
-    if (cmSystemTools::StringToULong(InfoGet("AM_PARALLEL"), &num)) {
+    if (cmSystemTools::StringToULong(InfoGet("AM_PARALLEL").c_str(), &num)) {
       num = std::max<unsigned long>(num, 1);
       num = std::min<unsigned long>(num, ParallelMax);
       Base_.NumThreads = static_cast<unsigned int>(num);
@@ -1238,14 +1244,11 @@ bool cmQtAutoGeneratorMocUic::Init(cmMakefile* makefile)
     return false;
   }
   // include directory
-  {
-    std::string dirRel = InfoGetConfig("AM_INCLUDE_DIR");
-    if (dirRel.empty()) {
-      Log().ErrorFile(GeneratorT::GEN, InfoFile(),
-                      "Autogen include directory missing");
-      return false;
-    }
-    Base_.AutogenIncludeDir = Base_.AbsoluteBuildPath(dirRel);
+  Base_.AutogenIncludeDir = InfoGetConfig("AM_INCLUDE_DIR");
+  if (Base_.AutogenIncludeDir.empty()) {
+    Log().ErrorFile(GeneratorT::GEN, InfoFile(),
+                    "Autogen include directory missing");
+    return false;
   }
 
   // - Files
@@ -1258,7 +1261,8 @@ bool cmQtAutoGeneratorMocUic::Init(cmMakefile* makefile)
   // - Qt environment
   {
     unsigned long qtv = Base_.QtVersionMajor;
-    if (cmSystemTools::StringToULong(InfoGet("AM_QT_VERSION_MAJOR"), &qtv)) {
+    if (cmSystemTools::StringToULong(InfoGet("AM_QT_VERSION_MAJOR").c_str(),
+                                     &qtv)) {
       Base_.QtVersionMajor = static_cast<unsigned int>(qtv);
     }
   }
@@ -1272,16 +1276,6 @@ bool cmQtAutoGeneratorMocUic::Init(cmMakefile* makefile)
       Moc_.SkipList.insert(lst.begin(), lst.end());
     }
     Moc_.Definitions = InfoGetConfigList("AM_MOC_DEFINITIONS");
-#ifdef _WIN32
-    {
-      std::string win32("WIN32");
-      auto itB = Moc().Definitions.cbegin();
-      auto itE = Moc().Definitions.cend();
-      if (std::find(itB, itE, win32) == itE) {
-        Moc_.Definitions.emplace_back(std::move(win32));
-      }
-    }
-#endif
     Moc_.IncludePaths = InfoGetConfigList("AM_MOC_INCLUDES");
     Moc_.Options = InfoGetList("AM_MOC_OPTIONS");
     Moc_.RelaxedMode = InfoGetBool("AM_MOC_RELAXED_MODE");
@@ -1294,7 +1288,7 @@ bool cmQtAutoGeneratorMocUic::Init(cmMakefile* makefile)
                                std::string& error) {
         if (!key.empty()) {
           if (!exp.empty()) {
-            Moc_.DependFilters.push_back(KeyExpT());
+            Moc_.DependFilters.emplace_back();
             KeyExpT& filter(Moc_.DependFilters.back());
             if (filter.Exp.compile(exp)) {
               filter.Key = key;
@@ -1322,8 +1316,9 @@ bool cmQtAutoGeneratorMocUic::Init(cmMakefile* makefile)
       std::string error;
       // Insert default filter for Q_PLUGIN_METADATA
       if (Base().QtVersionMajor != 4) {
-        pushFilter("Q_PLUGIN_METADATA", "[\n][ \t]*Q_PLUGIN_METADATA[ \t]*\\("
-                                        "[^\\)]*FILE[ \t]*\"([^\"]+)\"",
+        pushFilter("Q_PLUGIN_METADATA",
+                   "[\n][ \t]*Q_PLUGIN_METADATA[ \t]*\\("
+                   "[^\\)]*FILE[ \t]*\"([^\"]+)\"",
                    error);
       }
       // Insert user defined dependency filters
@@ -1373,7 +1368,7 @@ bool cmQtAutoGeneratorMocUic::Init(cmMakefile* makefile)
       // Compare list sizes
       if (sources.size() != options.size()) {
         std::ostringstream ost;
-        ost << "files/options lists sizes missmatch (" << sources.size() << "/"
+        ost << "files/options lists sizes mismatch (" << sources.size() << "/"
             << options.size() << ")";
         Log().ErrorFile(GeneratorT::UIC, InfoFile(), ost.str());
         return false;
@@ -1416,8 +1411,8 @@ bool cmQtAutoGeneratorMocUic::Init(cmMakefile* makefile)
         // Search for the default header file and a private header
         {
           std::array<std::string, 2> bases;
-          bases[0] = SubDirPrefix(src);
-          bases[0] += cmSystemTools::GetFilenameWithoutLastExtension(src);
+          bases[0] = FileSys().SubDirPrefix(src);
+          bases[0] += FileSys().GetFilenameWithoutLastExtension(src);
           bases[1] = bases[0];
           bases[1] += "_p";
           for (std::string const& headerBase : bases) {
@@ -1444,7 +1439,7 @@ bool cmQtAutoGeneratorMocUic::Init(cmMakefile* makefile)
   // ------------------------
 
   // Init file path checksum generator
-  Base_.FilePathChecksum.setupParentDirs(
+  FileSys().setupFilePathChecksum(
     Base().CurrentSourceDir, Base().CurrentBinaryDir, Base().ProjectSourceDir,
     Base().ProjectBinaryDir);
 
@@ -1503,15 +1498,15 @@ bool cmQtAutoGeneratorMocUic::Init(cmMakefile* makefile)
         if (cmHasLiteralSuffix(path, ".framework/Headers")) {
           // Go up twice to get to the framework root
           std::vector<std::string> pathComponents;
-          cmSystemTools::SplitPath(path, pathComponents);
-          std::string frameworkPath = cmSystemTools::JoinPath(
+          FileSys().SplitPath(path, pathComponents);
+          std::string frameworkPath = FileSys().JoinPath(
             pathComponents.begin(), pathComponents.end() - 2);
           frameworkPaths.insert(frameworkPath);
         }
       }
       // Append framework includes
       for (std::string const& path : frameworkPaths) {
-        Moc_.Includes.push_back("-F");
+        Moc_.Includes.emplace_back("-F");
         Moc_.Includes.push_back(path);
       }
     }
@@ -1876,7 +1871,7 @@ bool cmQtAutoGeneratorMocUic::ParallelJobPushMoc(JobHandleT& jobHandle)
               error += Quoted(mocJob.IncluderFile);
               error += " and\n  ";
               error += Quoted(otherJob.IncluderFile);
-              error += "\ncontain the the same moc include string ";
+              error += "\ncontain the same moc include string ";
               error += Quoted(mocJob.IncludeString);
               error += "\nbut the moc file would be generated from different "
                        "source files\n  ";
@@ -1925,7 +1920,7 @@ bool cmQtAutoGeneratorMocUic::ParallelJobPushUic(JobHandleT& jobHandle)
           error += Quoted(uicJob.IncluderFile);
           error += " and\n  ";
           error += Quoted(otherJob.IncluderFile);
-          error += "\ncontain the the same uic include string ";
+          error += "\ncontain the same uic include string ";
           error += Quoted(uicJob.IncludeString);
           error += "\nbut the uic file would be generated from different "
                    "source files\n  ";

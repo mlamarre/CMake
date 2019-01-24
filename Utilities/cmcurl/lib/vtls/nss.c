@@ -5,7 +5,7 @@
  *                            | (__| |_| |  _ <| |___
  *                             \___|\___/|_| \_\_____|
  *
- * Copyright (C) 1998 - 2017, Daniel Stenberg, <daniel@haxx.se>, et al.
+ * Copyright (C) 1998 - 2018, Daniel Stenberg, <daniel@haxx.se>, et al.
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
@@ -217,10 +217,15 @@ static const cipher_s cipherlist[] = {
 #endif
 };
 
+#ifdef WIN32
+static const char *pem_library = "nsspem.dll";
+static const char *trust_library = "nssckbi.dll";
+#else
 static const char *pem_library = "libnsspem.so";
-static SECMODModule *pem_module = NULL;
-
 static const char *trust_library = "libnssckbi.so";
+#endif
+
+static SECMODModule *pem_module = NULL;
 static SECMODModule *trust_module = NULL;
 
 /* NSPR I/O layer we use to detect blocking direction during SSL handshake */
@@ -394,7 +399,7 @@ static PK11SlotInfo* nss_find_slot_by_name(const char *slot_name)
 /* wrap 'ptr' as list node and tail-insert into 'list' */
 static CURLcode insert_wrapped_ptr(struct curl_llist *list, void *ptr)
 {
-  struct ptr_list_wrap *wrap = malloc(sizeof *wrap);
+  struct ptr_list_wrap *wrap = malloc(sizeof(*wrap));
   if(!wrap)
     return CURLE_OUT_OF_MEMORY;
 
@@ -440,7 +445,17 @@ static CURLcode nss_create_object(struct ssl_connect_data *connssl,
     PK11_SETATTRS(attrs, attr_cnt, CKA_TRUST, pval, sizeof(*pval));
   }
 
-  obj = PK11_CreateGenericObject(slot, attrs, attr_cnt, PR_FALSE);
+  /* PK11_CreateManagedGenericObject() was introduced in NSS 3.34 because
+   * PK11_DestroyGenericObject() does not release resources allocated by
+   * PK11_CreateGenericObject() early enough.  */
+  obj =
+#ifdef HAVE_PK11_CREATEMANAGEDGENERICOBJECT
+    PK11_CreateManagedGenericObject
+#else
+    PK11_CreateGenericObject
+#endif
+    (slot, attrs, attr_cnt, PR_FALSE);
+
   PK11_FreeSlot(slot);
   if(!obj)
     return result;
@@ -904,11 +919,11 @@ static CURLcode display_conn_info(struct connectdata *conn, PRFileDesc *sock)
   PRTime now;
   int i;
 
-  if(SSL_GetChannelInfo(sock, &channel, sizeof channel) ==
-     SECSuccess && channel.length == sizeof channel &&
+  if(SSL_GetChannelInfo(sock, &channel, sizeof(channel)) ==
+     SECSuccess && channel.length == sizeof(channel) &&
      channel.cipherSuite) {
     if(SSL_GetCipherSuiteInfo(channel.cipherSuite,
-                              &suite, sizeof suite) == SECSuccess) {
+                              &suite, sizeof(suite)) == SECSuccess) {
       infof(conn->data, "SSL connection using %s\n", suite.cipherSuiteName);
     }
   }
@@ -1335,7 +1350,8 @@ static CURLcode nss_init(struct Curl_easy *data)
       return CURLE_OUT_OF_MEMORY;
 
     /* the default methods just call down to the lower I/O layer */
-    memcpy(&nspr_io_methods, PR_GetDefaultIOMethods(), sizeof nspr_io_methods);
+    memcpy(&nspr_io_methods, PR_GetDefaultIOMethods(),
+           sizeof(nspr_io_methods));
 
     /* override certain methods in the table by our wrappers */
     nspr_io_methods.recv  = nspr_io_recv;
@@ -1511,7 +1527,6 @@ static bool is_nss_error(CURLcode err)
 {
   switch(err) {
   case CURLE_PEER_FAILED_VERIFICATION:
-  case CURLE_SSL_CACERT:
   case CURLE_SSL_CERTPROBLEM:
   case CURLE_SSL_CONNECT_ERROR:
   case CURLE_SSL_ISSUER_ERROR:
@@ -1568,8 +1583,9 @@ static CURLcode nss_load_ca_certificates(struct connectdata *conn,
     infof(data, "%s %s\n", (result) ? "failed to load" : "loaded",
           trust_library);
     if(result == CURLE_FAILED_INIT)
-      /* make the error non-fatal if we are not going to verify peer */
-      result = CURLE_SSL_CACERT_BADFILE;
+      /* If libnssckbi.so is not available (or fails to load), one can still
+         use CA certificates stored in NSS database.  Ignore the failure. */
+      result = CURLE_OK;
   }
   else if(!use_trust_module && trust_module) {
     /* libnssckbi.so not needed but already loaded --> unload it! */
@@ -1704,8 +1720,6 @@ static CURLcode nss_init_sslver(SSLVersionRange *sslver,
       failf(data, "unsupported min version passed via CURLOPT_SSLVERSION");
       return result;
     }
-    if(max == CURL_SSLVERSION_MAX_NONE)
-      sslver->max = sslver->min;
   }
 
   switch(max) {
@@ -2304,7 +2318,7 @@ static CURLcode Curl_nss_md5sum(unsigned char *tmp, /* input */
   return CURLE_OK;
 }
 
-static void Curl_nss_sha256sum(const unsigned char *tmp, /* input */
+static CURLcode Curl_nss_sha256sum(const unsigned char *tmp, /* input */
                                size_t tmplen,
                                unsigned char *sha256sum, /* output */
                                size_t sha256len)
@@ -2315,6 +2329,8 @@ static void Curl_nss_sha256sum(const unsigned char *tmp, /* input */
   PK11_DigestOp(SHA256pw, tmp, curlx_uztoui(tmplen));
   PK11_DigestFinal(SHA256pw, sha256sum, &SHA256out, curlx_uztoui(sha256len));
   PK11_DestroyContext(SHA256pw, PR_TRUE);
+
+  return CURLE_OK;
 }
 
 static bool Curl_nss_cert_status_request(void)
@@ -2345,11 +2361,10 @@ static void *Curl_nss_get_internals(struct ssl_connect_data *connssl,
 const struct Curl_ssl Curl_ssl_nss = {
   { CURLSSLBACKEND_NSS, "nss" }, /* info */
 
-  1, /* have_ca_path */
-  1, /* have_certinfo */
-  1, /* have_pinnedpubkey */
-  0, /* have_ssl_ctx */
-  1, /* support_https_proxy */
+  SSLSUPP_CA_PATH |
+  SSLSUPP_CERTINFO |
+  SSLSUPP_PINNEDPUBKEY |
+  SSLSUPP_HTTPS_PROXY,
 
   sizeof(struct ssl_backend_data),
 

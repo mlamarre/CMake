@@ -28,13 +28,42 @@ public:
     RCC
   };
 
+  /// @brief Integer version
+  struct IntegerVersion
+  {
+    unsigned int Major = 0;
+    unsigned int Minor = 0;
+
+    IntegerVersion() = default;
+    IntegerVersion(unsigned int major, unsigned int minor)
+      : Major(major)
+      , Minor(minor)
+    {
+    }
+
+    bool operator>(IntegerVersion const version)
+    {
+      return (this->Major > version.Major) ||
+        ((this->Major == version.Major) && (this->Minor > version.Minor));
+    }
+
+    bool operator>=(IntegerVersion const version)
+    {
+      return (this->Major > version.Major) ||
+        ((this->Major == version.Major) && (this->Minor >= version.Minor));
+    }
+  };
+
 public:
   /// @brief Returns the generator name
   static std::string const& GeneratorName(GeneratorT genType);
   /// @brief Returns the generator name in upper case
   static std::string GeneratorNameUpper(GeneratorT genType);
 
-  /// @brief Returns a the string escaped and enclosed in quotes
+  /// @brief Returns a string with the requested tool names
+  static std::string Tools(bool moc, bool uic, bool rcc);
+
+  /// @brief Returns the string escaped and enclosed in quotes
   static std::string Quoted(std::string const& text);
 
   static std::string QuotedCommand(std::vector<std::string> const& command);

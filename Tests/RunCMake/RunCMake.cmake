@@ -9,6 +9,10 @@ foreach(arg
 endforeach()
 
 function(run_cmake test)
+  if(DEFINED ENV{RunCMake_TEST_FILTER} AND NOT test MATCHES "$ENV{RunCMake_TEST_FILTER}")
+    return()
+  endif()
+
   set(top_src "${RunCMake_SOURCE_DIR}")
   set(top_bin "${RunCMake_BINARY_DIR}")
   if(EXISTS ${top_src}/${test}-result.txt)
@@ -45,14 +49,16 @@ function(run_cmake test)
     file(REMOVE_RECURSE "${RunCMake_TEST_BINARY_DIR}")
   endif()
   file(MAKE_DIRECTORY "${RunCMake_TEST_BINARY_DIR}")
+  if(RunCMake-prep-file AND EXISTS ${top_src}/${RunCMake-prep-file})
+    include(${top_src}/${RunCMake-prep-file})
+  else()
+    include(${top_src}/${test}-prep.cmake OPTIONAL)
+  endif()
   if(NOT DEFINED RunCMake_TEST_OPTIONS)
     set(RunCMake_TEST_OPTIONS "")
   endif()
   if(APPLE)
     list(APPEND RunCMake_TEST_OPTIONS -DCMAKE_POLICY_DEFAULT_CMP0025=NEW)
-  endif()
-  if(RunCMake_GENERATOR MATCHES "^Visual Studio 8 2005" AND NOT RunCMake_WARN_VS8)
-    list(APPEND RunCMake_TEST_OPTIONS -DCMAKE_WARN_VS8=OFF)
   endif()
   if(RunCMake_MAKE_PROGRAM)
     list(APPEND RunCMake_TEST_OPTIONS "-DCMAKE_MAKE_PROGRAM=${RunCMake_MAKE_PROGRAM}")
@@ -68,6 +74,13 @@ function(run_cmake test)
   else()
     set(maybe_timeout "")
   endif()
+  if(RunCMake-stdin-file AND EXISTS ${top_src}/${RunCMake-stdin-file})
+    set(maybe_input_file INPUT_FILE ${top_src}/${RunCMake-stdin-file})
+  elseif(EXISTS ${top_src}/${test}-stdin.txt)
+    set(maybe_input_file INPUT_FILE ${top_src}/${test}-stdin.txt)
+  else()
+    set(maybe_input_file "")
+  endif()
   if(RunCMake_TEST_COMMAND)
     execute_process(
       COMMAND ${RunCMake_TEST_COMMAND}
@@ -77,6 +90,7 @@ function(run_cmake test)
       RESULT_VARIABLE actual_result
       ENCODING UTF8
       ${maybe_timeout}
+      ${maybe_input_file}
       )
   else()
     if(RunCMake_GENERATOR_INSTANCE)
@@ -99,6 +113,7 @@ function(run_cmake test)
       RESULT_VARIABLE actual_result
       ENCODING UTF8
       ${maybe_timeout}
+      ${maybe_input_file}
       )
   endif()
   set(msg "")
@@ -112,6 +127,9 @@ function(run_cmake test)
     "|clang[^:]*: warning: the object size sanitizer has no effect at -O0, but is explicitly enabled:"
     "|Error kstat returned"
     "|Hit xcodebuild bug"
+    "|[^\n]*xcodebuild[^\n]*warning: file type[^\n]*is based on missing file type"
+    "|ld: 0711-224 WARNING: Duplicate symbol: .__init_aix_libgcc_cxa_atexit"
+    "|ld: 0711-345 Use the -bloadmap or -bnoquiet option to obtain more information"
     "|[^\n]*is a member of multiple groups"
     "|[^\n]*from Time Machine by path"
     "|[^\n]*Bullseye Testing Technology"

@@ -20,7 +20,7 @@ bool cmAddSubDirectoryCommand::InitialPass(
   }
 
   // store the binpath
-  std::string const& srcArg = args[0];
+  std::string const& srcArg = args.front();
   std::string binArg;
 
   bool excludeFromAll = false;
@@ -80,17 +80,17 @@ bool cmAddSubDirectoryCommand::InitialPass(
 
     // Remove the CurrentDirectory from the srcPath and replace it
     // with the CurrentOutputDirectory.
-    const char* src = this->Makefile->GetCurrentSourceDirectory();
-    const char* bin = this->Makefile->GetCurrentBinaryDirectory();
-    size_t srcLen = strlen(src);
-    size_t binLen = strlen(bin);
-    if (srcLen > 0 && src[srcLen - 1] == '/') {
+    const std::string& src = this->Makefile->GetCurrentSourceDirectory();
+    const std::string& bin = this->Makefile->GetCurrentBinaryDirectory();
+    size_t srcLen = src.length();
+    size_t binLen = bin.length();
+    if (srcLen > 0 && src.back() == '/') {
       --srcLen;
     }
-    if (binLen > 0 && bin[binLen - 1] == '/') {
+    if (binLen > 0 && bin.back() == '/') {
       --binLen;
     }
-    binPath = std::string(bin, binLen) + srcPath.substr(srcLen);
+    binPath = bin.substr(0, binLen) + srcPath.substr(srcLen);
   } else {
     // Use the binary directory specified.
     // Interpret a relative path with respect to the current binary directory.

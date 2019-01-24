@@ -1,29 +1,49 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
 # file Copyright.txt or https://cmake.org/licensing for details.
 
-#.rst:
-# FindJNI
-# -------
-#
-# Find JNI java libraries.
-#
-# This module finds if Java is installed and determines where the
-# include files and libraries are.  It also determines what the name of
-# the library is.  The caller may set variable JAVA_HOME to specify a
-# Java installation prefix explicitly.
-#
-# This module sets the following result variables:
-#
-# ::
-#
-#   JNI_INCLUDE_DIRS      = the include dirs to use
-#   JNI_LIBRARIES         = the libraries to use
-#   JNI_FOUND             = TRUE if JNI headers and libraries were found.
-#   JAVA_AWT_LIBRARY      = the path to the jawt library
-#   JAVA_JVM_LIBRARY      = the path to the jvm library
-#   JAVA_INCLUDE_PATH     = the include path to jni.h
-#   JAVA_INCLUDE_PATH2    = the include path to jni_md.h
-#   JAVA_AWT_INCLUDE_PATH = the include path to jawt.h
+#[=======================================================================[.rst:
+FindJNI
+-------
+
+Find Java Native Interface (JNI) libraries.
+
+JNI enables Java code running in a Java Virtual Machine (JVM) to call
+and be called by native applications and libraries written in other
+languages such as C, C++.
+
+This module finds if Java is installed and determines where the
+include files and libraries are.  It also determines what the name of
+the library is.  The caller may set variable ``JAVA_HOME`` to specify a
+Java installation prefix explicitly.
+
+Result Variables
+^^^^^^^^^^^^^^^^
+
+This module sets the following result variables:
+
+``JNI_INCLUDE_DIRS``
+  the include dirs to use
+``JNI_LIBRARIES``
+  the libraries to use (JAWT and JVM)
+``JNI_FOUND``
+  TRUE if JNI headers and libraries were found.
+
+Cache Variables
+^^^^^^^^^^^^^^^
+
+The following cache variables are also available to set or use:
+
+``JAVA_AWT_LIBRARY``
+  the path to the Java AWT Native Interface (JAWT) library
+``JAVA_JVM_LIBRARY``
+  the path to the Java Virtual Machine (JVM) library
+``JAVA_INCLUDE_PATH``
+  the include path to jni.h
+``JAVA_INCLUDE_PATH2``
+  the include path to jni_md.h and jniport.h
+``JAVA_AWT_INCLUDE_PATH``
+  the include path to jawt.h
+#]=======================================================================]
 
 # Expand {libarch} occurrences to java_libarch subdirectory(-ies) and set ${_var}
 macro(java_append_library_directories _var)
@@ -47,7 +67,10 @@ macro(java_append_library_directories _var)
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^mips")
         # mips* machines are bi-endian mostly so processor does not tell
         # endianness of the underlying system.
-        set(_java_libarch "${CMAKE_SYSTEM_PROCESSOR}" "mips" "mipsel" "mipseb" "mips64" "mips64el" "mipsn32" "mipsn32el")
+        set(_java_libarch "${CMAKE_SYSTEM_PROCESSOR}"
+            "mips" "mipsel" "mipseb" "mipsr6" "mipsr6el"
+            "mips64" "mips64el" "mips64r6" "mips64r6el"
+            "mipsn32" "mipsn32el" "mipsn32r6" "mipsn32r6el")
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(powerpc|ppc)64le")
         set(_java_libarch "ppc64" "ppc64le")
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(powerpc|ppc)64")
@@ -117,14 +140,51 @@ if(_JAVA_HOME)
     ${_JAVA_HOME}
     )
 endif()
-get_filename_component(java_install_version
-  "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit;CurrentVersion]" NAME)
 
-list(APPEND JAVA_AWT_LIBRARY_DIRECTORIES
-  "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\1.4;JavaHome]/lib"
-  "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\1.3;JavaHome]/lib"
-  "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\${java_install_version};JavaHome]/lib"
-  )
+if (WIN32)
+  set (_JNI_HINTS)
+  execute_process(COMMAND REG QUERY HKLM\\SOFTWARE\\JavaSoft\\JDK /f "." /k
+    RESULT_VARIABLE _JNI_RESULT
+    OUTPUT_VARIABLE _JNI_VERSIONS
+    ERROR_QUIET)
+  if (NOT  _JNI_RESULT)
+    string (REGEX MATCHALL "HKEY_LOCAL_MACHINE\\\\SOFTWARE\\\\JavaSoft\\\\JDK\\\\[0-9.]+" _JNI_VERSIONS "${_JNI_VERSIONS}")
+    if (_JNI_VERSIONS)
+      # sort versions. Most recent first
+      ## handle version 9 apart from other versions to get correct ordering
+      set (_JNI_V9 ${_JNI_VERSIONS})
+      list (FILTER _JNI_VERSIONS EXCLUDE REGEX "JDK\\\\9")
+      list (SORT _JNI_VERSIONS)
+      list (REVERSE _JNI_VERSIONS)
+      list (FILTER _JNI_V9 INCLUDE REGEX "JDK\\\\9")
+      list (SORT _JNI_V9)
+      list (REVERSE _JNI_V9)
+      list (APPEND _JNI_VERSIONS ${_JNI_V9})
+      foreach (_JNI_HINT IN LISTS _JNI_VERSIONS)
+        list(APPEND _JNI_HINTS "[${_JNI_HINT};JavaHome]")
+      endforeach()
+    endif()
+  endif()
+
+  foreach (_JNI_HINT IN LISTS _JNI_HINTS)
+    list(APPEND JAVA_AWT_LIBRARY_DIRECTORIES "${_JNI_HINT}/lib")
+  endforeach()
+
+  get_filename_component(java_install_version
+    "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit;CurrentVersion]" NAME)
+
+  list(APPEND JAVA_AWT_LIBRARY_DIRECTORIES
+    "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\1.9;JavaHome]/lib"
+    "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\1.8;JavaHome]/lib"
+    "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\1.7;JavaHome]/lib"
+    "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\1.6;JavaHome]/lib"
+    "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\1.5;JavaHome]/lib"
+    "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\1.4;JavaHome]/lib"
+    "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\1.3;JavaHome]/lib"
+    "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\${java_install_version};JavaHome]/lib"
+    )
+endif()
+
 JAVA_APPEND_LIBRARY_DIRECTORIES(JAVA_AWT_LIBRARY_DIRECTORIES
   /usr/lib/jvm/java/lib
   /usr/lib/java/jre/lib/{libarch}
@@ -147,6 +207,7 @@ JAVA_APPEND_LIBRARY_DIRECTORIES(JAVA_AWT_LIBRARY_DIRECTORIES
   /usr/lib/jvm/default/jre/lib/{libarch}
   /usr/lib/jvm/default/lib/{libarch}
   # Ubuntu specific paths for default JVM
+  /usr/lib/jvm/java-11-openjdk-{libarch}/jre/lib/{libarch}    # Ubuntu 18.04 LTS
   /usr/lib/jvm/java-8-openjdk-{libarch}/jre/lib/{libarch}     # Ubuntu 15.10
   /usr/lib/jvm/java-7-openjdk-{libarch}/jre/lib/{libarch}     # Ubuntu 15.10
   /usr/lib/jvm/java-6-openjdk-{libarch}/jre/lib/{libarch}     # Ubuntu 15.10
@@ -176,11 +237,21 @@ set(JAVA_AWT_INCLUDE_DIRECTORIES)
 if(_JAVA_HOME)
   list(APPEND JAVA_AWT_INCLUDE_DIRECTORIES ${_JAVA_HOME}/include)
 endif()
-list(APPEND JAVA_AWT_INCLUDE_DIRECTORIES
-  "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\1.4;JavaHome]/include"
-  "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\1.3;JavaHome]/include"
-  "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\${java_install_version};JavaHome]/include"
-)
+if (WIN32)
+  foreach (_JNI_HINT IN LISTS _JNI_HINTS)
+    list(APPEND JAVA_AWT_INCLUDE_DIRECTORIES "${_JNI_HINT}/include")
+  endforeach()
+  list(APPEND JAVA_AWT_INCLUDE_DIRECTORIES
+    "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\1.9;JavaHome]/include"
+    "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\1.8;JavaHome]/include"
+    "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\1.7;JavaHome]/include"
+    "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\1.6;JavaHome]/include"
+    "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\1.5;JavaHome]/include"
+    "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\1.4;JavaHome]/include"
+    "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\1.3;JavaHome]/include"
+    "[HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit\\${java_install_version};JavaHome]/include"
+    )
+endif()
 
 JAVA_APPEND_LIBRARY_DIRECTORIES(JAVA_AWT_INCLUDE_DIRECTORIES
   /usr/lib/java/include
@@ -327,4 +398,3 @@ set(JNI_INCLUDE_DIRS
   ${JAVA_INCLUDE_PATH2}
   ${JAVA_AWT_INCLUDE_PATH}
 )
-

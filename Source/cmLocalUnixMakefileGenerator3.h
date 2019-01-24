@@ -12,6 +12,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 class cmCustomCommand;
@@ -243,9 +244,9 @@ protected:
                           cmGeneratorTarget* target,
                           const char* filename = nullptr);
 
-  // Helper methods for dependeny updates.
+  // Helper methods for dependency updates.
   bool ScanDependencies(
-    const char* targetDir,
+    const std::string& targetDir,
     std::map<std::string, cmDepends::DependencyVector>& validDeps);
   void CheckMultipleOutputs(bool verbose);
 
@@ -264,30 +265,21 @@ private:
 
   struct LocalObjectEntry
   {
-    cmGeneratorTarget* Target;
+    cmGeneratorTarget* Target = nullptr;
     std::string Language;
-    LocalObjectEntry()
-      : Target(nullptr)
-      , Language()
-    {
-    }
-    LocalObjectEntry(cmGeneratorTarget* t, const std::string& lang)
+    LocalObjectEntry() {}
+    LocalObjectEntry(cmGeneratorTarget* t, std::string lang)
       : Target(t)
-      , Language(lang)
+      , Language(std::move(lang))
     {
     }
   };
   struct LocalObjectInfo : public std::vector<LocalObjectEntry>
   {
-    bool HasSourceExtension;
-    bool HasPreprocessRule;
-    bool HasAssembleRule;
-    LocalObjectInfo()
-      : HasSourceExtension(false)
-      , HasPreprocessRule(false)
-      , HasAssembleRule(false)
-    {
-    }
+    bool HasSourceExtension = false;
+    bool HasPreprocessRule = false;
+    bool HasAssembleRule = false;
+    LocalObjectInfo() {}
   };
   void GetLocalObjectFiles(
     std::map<std::string, LocalObjectInfo>& localObjectFiles);

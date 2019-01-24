@@ -9,7 +9,7 @@ See documentation on `CMake Development`_ for more information.
 C++ Code Style
 ==============
 
-We use `clang-format`_ version **3.8** to define our style for C++ code in
+We use `clang-format`_ version **6.0** to define our style for C++ code in
 the CMake source tree.  See the `.clang-format`_ configuration file for our
 style settings.  Use the `Utilities/Scripts/clang-format.bash`_ script to
 format source code.  It automatically runs ``clang-format`` on the set of
@@ -40,13 +40,6 @@ building on older toolchains some constructs need to be handled with care:
   derived from non-copyable classes must also be made non-copyable explicitly
   with ``CM_DISABLE_COPY``.
 
-* Use ``size_t`` instead of ``std::size_t``.
-
-  Various implementations have differing implementation of ``size_t``.
-  When assigning the result of ``.size()`` on a container for example,
-  the result should be assigned to ``size_t`` not to ``std::size_t``,
-  ``unsigned int`` or similar types.
-
 Source Tree Layout
 ==================
 
@@ -56,7 +49,7 @@ The CMake source tree is organized as follows.
   Shell and editor integration files.
 
 * ``Help/``:
-  Documentation.
+  Documentation.  See the `CMake Documentation Guide`_.
 
   * ``Help/dev/``:
     Developer documentation.
@@ -92,4 +85,5 @@ The CMake source tree is organized as follows.
   * ``Utilities/Release/``:
     Scripts used to package CMake itself for distribution on ``cmake.org``.
 
+.. _`CMake Documentation Guide`: documentation.rst
 .. _`Tests/README.rst`: ../../Tests/README.rst

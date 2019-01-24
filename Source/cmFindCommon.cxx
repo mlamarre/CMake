@@ -56,7 +56,7 @@ void cmFindCommon::InitializeSearchPathGroups()
 {
   std::vector<PathLabel>* labels;
 
-  // Define the varoius different groups of path types
+  // Define the various different groups of path types
 
   // All search paths
   labels = &this->PathGroupLabelMap[PathGroup::All];
@@ -71,7 +71,7 @@ void cmFindCommon::InitializeSearchPathGroups()
   // Define the search group order
   this->PathGroupOrder.push_back(PathGroup::All);
 
-  // Create the idividual labeld search paths
+  // Create the individual labeled search paths
   this->LabeledPaths.insert(
     std::make_pair(PathLabel::PackageRoot, cmSearchPath(this)));
   this->LabeledPaths.insert(
@@ -86,13 +86,6 @@ void cmFindCommon::InitializeSearchPathGroups()
     std::make_pair(PathLabel::CMakeSystem, cmSearchPath(this)));
   this->LabeledPaths.insert(
     std::make_pair(PathLabel::Guess, cmSearchPath(this)));
-}
-
-void cmFindCommon::SelectDefaultNoPackageRootPath()
-{
-  if (!this->Makefile->IsOn("__UNDOCUMENTED_CMAKE_FIND_PACKAGE_ROOT")) {
-    this->NoPackageRootPath = true;
-  }
 }
 
 void cmFindCommon::SelectDefaultRootPathMode()
@@ -185,13 +178,13 @@ void cmFindCommon::RerootPaths(std::vector<std::string>& paths)
     cmSystemTools::ExpandListArgument(rootPath, roots);
   }
   if (sysrootCompile) {
-    roots.push_back(sysrootCompile);
+    roots.emplace_back(sysrootCompile);
   }
   if (sysrootLink) {
-    roots.push_back(sysrootLink);
+    roots.emplace_back(sysrootLink);
   }
   if (sysroot) {
-    roots.push_back(sysroot);
+    roots.emplace_back(sysroot);
   }
   for (std::string& r : roots) {
     cmSystemTools::ConvertToUnixSlashes(r);
@@ -300,13 +293,13 @@ void cmFindCommon::AddPathSuffix(std::string const& arg)
   if (suffix.empty()) {
     return;
   }
-  if (suffix[0] == '/') {
+  if (suffix.front() == '/') {
     suffix = suffix.substr(1);
   }
   if (suffix.empty()) {
     return;
   }
-  if (suffix[suffix.size() - 1] == '/') {
+  if (suffix.back() == '/') {
     suffix = suffix.substr(0, suffix.size() - 1);
   }
   if (suffix.empty()) {

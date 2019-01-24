@@ -6,7 +6,6 @@
 #include "cmConfigure.h" // IWYU pragma: keep
 
 #include <iosfwd>
-#include <map>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -36,6 +35,7 @@ public:
   cmTargetInternalPointer& operator=(cmTargetInternalPointer const& r);
   cmTargetInternals* operator->() const { return this->Pointer; }
   cmTargetInternals* Get() const { return this->Pointer; }
+
 private:
   cmTargetInternals* Pointer;
 };
@@ -123,7 +123,7 @@ public:
   void AddSources(std::vector<std::string> const& srcs);
   void AddTracedSources(std::vector<std::string> const& srcs);
   cmSourceFile* AddSourceCMP0049(const std::string& src);
-  cmSourceFile* AddSource(const std::string& src);
+  cmSourceFile* AddSource(const std::string& src, bool before = false);
 
   //* how we identify a library, by name and type
   typedef std::pair<std::string, cmTargetLinkLibraryType> LibraryID;
@@ -137,10 +137,13 @@ public:
   /**
    * Clear the dependency information recorded for this target, if any.
    */
-  void ClearDependencyInformation(cmMakefile& mf, const std::string& target);
+  void ClearDependencyInformation(cmMakefile& mf);
 
   void AddLinkLibrary(cmMakefile& mf, const std::string& lib,
                       cmTargetLinkLibraryType llt);
+  void AddLinkLibrary(cmMakefile& mf, std::string const& lib,
+                      std::string const& libRef, cmTargetLinkLibraryType llt);
+
   enum TLLSignature
   {
     KeywordTLLSignature,
@@ -149,10 +152,6 @@ public:
   bool PushTLLCommandTrace(TLLSignature signature,
                            cmListFileContext const& lfc);
   void GetTllSignatureTraces(std::ostream& s, TLLSignature sig) const;
-
-  const std::vector<std::string>& GetLinkDirectories() const;
-
-  void AddLinkDirectory(const std::string& d);
 
   /**
    * Set the path where this target should be installed. This is relative to
@@ -181,8 +180,8 @@ public:
   void SetHaveInstallRule(bool h) { this->HaveInstallRule = h; }
 
   /**
-  * Get/Set whether this target was auto-created by a generator.
-  */
+   * Get/Set whether this target was auto-created by a generator.
+   */
   bool GetIsGeneratorProvided() const { return this->IsGeneratorProvided; }
   void SetIsGeneratorProvided(bool igp) { this->IsGeneratorProvided = igp; }
 
@@ -190,16 +189,21 @@ public:
    * name as would be specified to the ADD_EXECUTABLE or UTILITY_SOURCE
    * commands. It is not a full path nor does it have an extension.
    */
-  void AddUtility(const std::string& u, cmMakefile* makefile = nullptr);
+  void AddUtility(std::string const& u, cmMakefile* mf = nullptr);
   ///! Get the utilities used by this target
-  std::set<std::string> const& GetUtilities() const { return this->Utilities; }
-  cmListFileBacktrace const* GetUtilityBacktrace(const std::string& u) const;
+  std::set<BT<std::string>> const& GetUtilities() const
+  {
+    return this->Utilities;
+  }
 
   ///! Set/Get a property of this target file
   void SetProperty(const std::string& prop, const char* value);
   void AppendProperty(const std::string& prop, const char* value,
                       bool asString = false);
+  ///! Might return a nullptr if the property is not set or invalid
   const char* GetProperty(const std::string& prop) const;
+  ///! Always returns a valid pointer
+  const char* GetSafeProperty(const std::string& prop) const;
   bool GetPropertyAsBool(const std::string& prop) const;
   void CheckProperty(const std::string& prop, cmMakefile* context) const;
   const char* GetComputedProperty(const std::string& prop,
@@ -238,6 +242,10 @@ public:
                            cmListFileBacktrace const& bt, bool before = false);
   void InsertCompileDefinition(std::string const& entry,
                                cmListFileBacktrace const& bt);
+  void InsertLinkOption(std::string const& entry,
+                        cmListFileBacktrace const& bt, bool before = false);
+  void InsertLinkDirectory(std::string const& entry,
+                           cmListFileBacktrace const& bt, bool before = false);
 
   void AppendBuildInterfaceIncludes();
 
@@ -264,6 +272,13 @@ public:
 
   cmStringRange GetSourceEntries() const;
   cmBacktraceRange GetSourceBacktraces() const;
+
+  cmStringRange GetLinkOptionsEntries() const;
+  cmBacktraceRange GetLinkOptionsBacktraces() const;
+
+  cmStringRange GetLinkDirectoriesEntries() const;
+  cmBacktraceRange GetLinkDirectoriesBacktraces() const;
+
   cmStringRange GetLinkImplementationEntries() const;
   cmBacktraceRange GetLinkImplementationBacktraces() const;
 
@@ -293,14 +308,11 @@ private:
   bool IsGeneratorProvided;
   cmPropertyMap Properties;
   std::set<std::string> SystemIncludeDirectories;
-  std::set<std::string> LinkDirectoriesEmmitted;
-  std::set<std::string> Utilities;
-  std::map<std::string, cmListFileBacktrace> UtilityBacktraces;
+  std::set<BT<std::string>> Utilities;
   cmPolicies::PolicyMap PolicyMap;
   std::string Name;
   std::string InstallPath;
   std::string RuntimeInstallPath;
-  std::vector<std::string> LinkDirectories;
   std::vector<cmCustomCommand> PreBuildCommands;
   std::vector<cmCustomCommand> PreLinkCommands;
   std::vector<cmCustomCommand> PostBuildCommands;
@@ -310,7 +322,6 @@ private:
   cmTargetInternalPointer Internal;
   cmStateEnums::TargetType TargetTypeValue;
   bool HaveInstallRule;
-  bool RecordDependencies;
   bool DLLPlatform;
   bool IsAndroid;
   bool IsImportedTarget;
@@ -331,12 +342,5 @@ private:
 };
 
 typedef std::unordered_map<std::string, cmTarget> cmTargets;
-
-class cmTargetSet : public std::set<std::string>
-{
-};
-class cmTargetManifest : public std::map<std::string, cmTargetSet>
-{
-};
 
 #endif

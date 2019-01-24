@@ -6,6 +6,7 @@
 #include <memory> // IWYU pragma: keep
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "cmGeneratedFileStream.h"
@@ -84,6 +85,10 @@ void cmMakefileExecutableTargetGenerator::WriteDeviceExecutableRule(
   bool relink)
 {
 #ifdef CMAKE_BUILD_WITH_CMAKE
+  if (!this->GlobalGenerator->GetLanguageEnabled("CUDA")) {
+    return;
+  }
+
   const std::string cuda_lang("CUDA");
   cmGeneratorTarget::LinkClosure const* closure =
     this->GeneratorTarget->GetLinkClosure(this->ConfigName);
@@ -97,14 +102,14 @@ void cmMakefileExecutableTargetGenerator::WriteDeviceExecutableRule(
 
   std::vector<std::string> commands;
 
-  // Build list of dependencies.
-  std::vector<std::string> depends;
-  this->AppendLinkDepends(depends);
-
   // Get the language to use for linking this library.
   std::string linkLanguage = "CUDA";
   std::string const objExt =
     this->Makefile->GetSafeDefinition("CMAKE_CUDA_OUTPUT_EXTENSION");
+
+  // Build list of dependencies.
+  std::vector<std::string> depends;
+  this->AppendLinkDepends(depends, linkLanguage);
 
   // Get the name of the device object to generate.
   std::string const targetOutputReal =
@@ -154,12 +159,7 @@ void cmMakefileExecutableTargetGenerator::WriteDeviceExecutableRule(
                                              linkLanguage, this->ConfigName);
 
   // Add target-specific linker flags.
-  this->LocalGenerator->AppendFlags(
-    linkFlags, this->GeneratorTarget->GetProperty("LINK_FLAGS"));
-  std::string linkFlagsConfig = "LINK_FLAGS_";
-  linkFlagsConfig += cmSystemTools::UpperCase(this->ConfigName);
-  this->LocalGenerator->AppendFlags(
-    linkFlags, this->GeneratorTarget->GetProperty(linkFlagsConfig));
+  this->GetTargetLinkFlags(linkFlags, linkLanguage);
 
   // Construct a list of files associated with this executable that
   // may need to be cleaned.
@@ -299,13 +299,6 @@ void cmMakefileExecutableTargetGenerator::WriteExecutableRule(bool relink)
 {
   std::vector<std::string> commands;
 
-  // Build list of dependencies.
-  std::vector<std::string> depends;
-  this->AppendLinkDepends(depends);
-  if (!this->DeviceLinkObject.empty()) {
-    depends.push_back(this->DeviceLinkObject);
-  }
-
   // Get the name of the executable to generate.
   std::string targetName;
   std::string targetNameReal;
@@ -383,6 +376,13 @@ void cmMakefileExecutableTargetGenerator::WriteExecutableRule(bool relink)
     return;
   }
 
+  // Build list of dependencies.
+  std::vector<std::string> depends;
+  this->AppendLinkDepends(depends, linkLanguage);
+  if (!this->DeviceLinkObject.empty()) {
+    depends.push_back(this->DeviceLinkObject);
+  }
+
   this->NumberOfProgressActions++;
   if (!this->NoRuleMessages) {
     cmLocalUnixMakefileGenerator3::EchoProgress progress;
@@ -437,12 +437,7 @@ void cmMakefileExecutableTargetGenerator::WriteExecutableRule(bool relink)
                                              linkLanguage, this->ConfigName);
 
   // Add target-specific linker flags.
-  this->LocalGenerator->AppendFlags(
-    linkFlags, this->GeneratorTarget->GetProperty("LINK_FLAGS"));
-  std::string linkFlagsConfig = "LINK_FLAGS_";
-  linkFlagsConfig += cmSystemTools::UpperCase(this->ConfigName);
-  this->LocalGenerator->AppendFlags(
-    linkFlags, this->GeneratorTarget->GetProperty(linkFlagsConfig));
+  this->GetTargetLinkFlags(linkFlags, linkLanguage);
 
   {
     std::unique_ptr<cmLinkLineComputer> linkLineComputer(
@@ -466,7 +461,7 @@ void cmMakefileExecutableTargetGenerator::WriteExecutableRule(bool relink)
   // clean set just in case.
   exeCleanFiles.push_back(this->LocalGenerator->MaybeConvertToRelativePath(
     this->LocalGenerator->GetCurrentBinaryDirectory(),
-    (targetFullPath + ".manifest").c_str()));
+    targetFullPath + ".manifest"));
 #endif
   if (targetNameReal != targetName) {
     exeCleanFiles.push_back(this->LocalGenerator->MaybeConvertToRelativePath(
@@ -477,8 +472,8 @@ void cmMakefileExecutableTargetGenerator::WriteExecutableRule(bool relink)
       this->LocalGenerator->GetCurrentBinaryDirectory(),
       targetFullPathImport));
     std::string implib;
-    if (this->GeneratorTarget->GetImplibGNUtoMS(targetFullPathImport,
-                                                implib)) {
+    if (this->GeneratorTarget->GetImplibGNUtoMS(
+          this->ConfigName, targetFullPathImport, implib)) {
       exeCleanFiles.push_back(this->LocalGenerator->MaybeConvertToRelativePath(
         this->LocalGenerator->GetCurrentBinaryDirectory(), implib));
     }

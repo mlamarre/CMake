@@ -15,23 +15,25 @@
 #include "cmInstallType.h"
 #include "cmLocalGenerator.h"
 #include "cmMakefile.h"
+#include "cmMessageType.h"
 #include "cmStateTypes.h"
 #include "cmSystemTools.h"
 #include "cmTarget.h"
 #include "cmake.h"
 
 cmInstallTargetGenerator::cmInstallTargetGenerator(
-  const std::string& targetName, const char* dest, bool implib,
+  std::string targetName, const char* dest, bool implib,
   const char* file_permissions, std::vector<std::string> const& configurations,
   const char* component, MessageLevel message, bool exclude_from_all,
-  bool optional)
+  bool optional, cmListFileBacktrace backtrace)
   : cmInstallGenerator(dest, configurations, component, message,
                        exclude_from_all)
-  , TargetName(targetName)
+  , TargetName(std::move(targetName))
   , Target(nullptr)
   , FilePermissions(file_permissions)
   , ImportLibrary(implib)
   , Optional(optional)
+  , Backtrace(std::move(backtrace))
 {
   this->ActionsPerConfig = true;
   this->NamelinkMode = NamelinkModeNone;
@@ -90,7 +92,7 @@ void cmInstallTargetGenerator::GenerateScriptForConfig(
     case cmStateEnums::GLOBAL_TARGET:
     case cmStateEnums::UNKNOWN_LIBRARY:
       this->Target->GetLocalGenerator()->IssueMessage(
-        cmake::INTERNAL_ERROR,
+        MessageType::INTERNAL_ERROR,
         "cmInstallTargetGenerator created with non-installable target.");
       return;
   }
@@ -135,7 +137,7 @@ void cmInstallTargetGenerator::GenerateScriptForConfig(
       filesFrom.push_back(std::move(from1));
       filesTo.push_back(std::move(to1));
       std::string targetNameImportLib;
-      if (this->Target->GetImplibGNUtoMS(targetNameImport,
+      if (this->Target->GetImplibGNUtoMS(config, targetNameImport,
                                          targetNameImportLib)) {
         filesFrom.push_back(fromDirConfig + targetNameImportLib);
         filesTo.push_back(toDir + targetNameImportLib);
@@ -201,7 +203,7 @@ void cmInstallTargetGenerator::GenerateScriptForConfig(
       filesFrom.push_back(std::move(from1));
       filesTo.push_back(std::move(to1));
       std::string targetNameImportLib;
-      if (this->Target->GetImplibGNUtoMS(targetNameImport,
+      if (this->Target->GetImplibGNUtoMS(config, targetNameImport,
                                          targetNameImportLib)) {
         filesFrom.push_back(fromDirConfig + targetNameImportLib);
         filesTo.push_back(toDir + targetNameImportLib);
@@ -398,7 +400,7 @@ std::string cmInstallTargetGenerator::GetInstallFilename(
                                targetNamePDB, config);
     if (nameType == NameImplib) {
       // Use the import library name.
-      if (!target->GetImplibGNUtoMS(targetNameImport, fname,
+      if (!target->GetImplibGNUtoMS(config, targetNameImport, fname,
                                     "${CMAKE_IMPORT_LIBRARY_SUFFIX}")) {
         fname = targetNameImport;
       }
@@ -419,7 +421,7 @@ std::string cmInstallTargetGenerator::GetInstallFilename(
                             targetNameImport, targetNamePDB, config);
     if (nameType == NameImplib) {
       // Use the import library name.
-      if (!target->GetImplibGNUtoMS(targetNameImport, fname,
+      if (!target->GetImplibGNUtoMS(config, targetNameImport, fname,
                                     "${CMAKE_IMPORT_LIBRARY_SUFFIX}")) {
         fname = targetNameImport;
       }
@@ -440,7 +442,13 @@ std::string cmInstallTargetGenerator::GetInstallFilename(
 
 void cmInstallTargetGenerator::Compute(cmLocalGenerator* lg)
 {
+  // Lookup this target in the current directory.
   this->Target = lg->FindLocalNonAliasGeneratorTarget(this->TargetName);
+  if (!this->Target) {
+    // If no local target has been found, find it in the global scope.
+    this->Target =
+      lg->GetGlobalGenerator()->FindGeneratorTarget(this->TargetName);
+  }
 }
 
 void cmInstallTargetGenerator::AddTweak(std::ostream& os, Indent indent,
@@ -688,7 +696,7 @@ void cmInstallTargetGenerator::AddChrpathPatchRule(
         << "Therefore, runtime paths will not be changed when installing.  "
         << "CMAKE_BUILD_WITH_INSTALL_RPATH may be used to work around"
            " this limitation.";
-      mf->IssueMessage(cmake::WARNING, msg.str());
+      mf->IssueMessage(MessageType::WARNING, msg.str());
     } else {
       // Note: These paths are kept unique to avoid
       // install_name_tool corruption.

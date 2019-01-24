@@ -111,8 +111,8 @@ public:
     , Revisions(revs)
     , Section(SectionHeader)
   {
-    this->SetLog(&cvs->Log, prefix),
-      this->RegexRevision.compile("^revision +([^ ]*) *$");
+    this->SetLog(&cvs->Log, prefix);
+    this->RegexRevision.compile("^revision +([^ ]*) *$");
     this->RegexBranches.compile("^branches: .*$");
     this->RegexPerson.compile("^date: +([^;]+); +author: +([^;]+);");
   }
@@ -134,8 +134,9 @@ private:
 
   bool ProcessLine() override
   {
-    if (this->Line == ("======================================="
-                       "======================================")) {
+    if (this->Line ==
+        ("======================================="
+         "======================================")) {
       // This line ends the revision list.
       if (this->Section == SectionRevisions) {
         this->FinishRevision();

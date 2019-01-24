@@ -35,6 +35,7 @@
 #                            target_link_libraries. Because of how interface
 #                            properties propagate, this target is not suitable
 #                            for use with PUBLIC or INTERFACE linking.
+#  KWSYS_ALIAS_TARGET = The name of an alias target to create to the actual target.
 #
 #    Example:
 #
@@ -89,6 +90,7 @@ FOREACH(p
     CMP0048 # CMake 3.0, Let the project command manage version variables.
     CMP0056 # CMake 3.2, Honor link flags in try_compile() source-file signature.
     CMP0063 # CMake 3.3, Honor visibility properties for all target types.
+    CMP0069 # CMake 3.9, INTERPROCEDURAL_OPTIMIZATION is enforced when enabled.
     )
   IF(POLICY ${p})
     CMAKE_POLICY(SET ${p} NEW)
@@ -196,6 +198,11 @@ IF(KWSYS_STANDALONE)
   ENDIF()
 ENDIF()
 
+# Choose default shared/static build if not specified.
+IF(NOT DEFINED KWSYS_BUILD_SHARED)
+  SET(KWSYS_BUILD_SHARED ${BUILD_SHARED_LIBS})
+ENDIF()
+
 # Include helper macros.
 INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/kwsysPlatformTests.cmake)
 INCLUDE(CheckTypeSize)
@@ -230,19 +237,31 @@ ENDIF()
 
 # Setup library install rules.
 SET(KWSYS_INSTALL_LIBRARY_RULE)
+SET(KWSYS_INSTALL_NAMELINK_RULE)
 IF(KWSYS_INSTALL_LIB_DIR)
   IF(KWSYS_INSTALL_EXPORT_NAME)
     LIST(APPEND KWSYS_INSTALL_LIBRARY_RULE EXPORT ${KWSYS_INSTALL_EXPORT_NAME})
   ENDIF()
   # Install the shared library to the lib directory.
   SET(KWSYS_INSTALL_LIBRARY_RULE ${KWSYS_INSTALL_LIBRARY_RULE}
-    LIBRARY DESTINATION ${KWSYS_INSTALL_LIB_DIR}
+    LIBRARY DESTINATION ${KWSYS_INSTALL_LIB_DIR} NAMELINK_SKIP
     )
   # Assign the shared library to the runtime component.
   IF(KWSYS_INSTALL_COMPONENT_NAME_RUNTIME)
     SET(KWSYS_INSTALL_LIBRARY_RULE ${KWSYS_INSTALL_LIBRARY_RULE}
       COMPONENT ${KWSYS_INSTALL_COMPONENT_NAME_RUNTIME}
       )
+  ENDIF()
+  IF(KWSYS_BUILD_SHARED)
+    SET(KWSYS_INSTALL_NAMELINK_RULE ${KWSYS_INSTALL_NAMELINK_RULE}
+      LIBRARY DESTINATION ${KWSYS_INSTALL_LIB_DIR} NAMELINK_ONLY
+      )
+    # Assign the namelink to the development component.
+    IF(KWSYS_INSTALL_COMPONENT_NAME_DEVELOPMENT)
+      SET(KWSYS_INSTALL_NAMELINK_RULE ${KWSYS_INSTALL_NAMELINK_RULE}
+        COMPONENT ${KWSYS_INSTALL_COMPONENT_NAME_DEVELOPMENT}
+        )
+    ENDIF()
   ENDIF()
 
   # Install the archive to the lib directory.
@@ -425,11 +444,6 @@ IF(KWSYS_NAMESPACE MATCHES "^kwsys$")
   SET(KWSYS_NAME_IS_KWSYS 1)
 ELSE()
   SET(KWSYS_NAME_IS_KWSYS 0)
-ENDIF()
-
-# Choose default shared/static build if not specified.
-IF(KWSYS_BUILD_SHARED MATCHES "^KWSYS_BUILD_SHARED$")
-  SET(KWSYS_BUILD_SHARED ${BUILD_SHARED_LIBS})
 ENDIF()
 
 IF(KWSYS_BUILD_SHARED)
@@ -875,6 +889,9 @@ IF(KWSYS_C_SRCS OR KWSYS_CXX_SRCS)
     ADD_LIBRARY(${KWSYS_TARGET_INTERFACE} ${KWSYS_LIBRARY_TYPE}
       ${KWSYS_C_SRCS} ${KWSYS_CXX_SRCS})
   ENDIF()
+  if (KWSYS_ALIAS_TARGET)
+    add_library(${KWSYS_ALIAS_TARGET} ALIAS ${KWSYS_TARGET_INTERFACE})
+  endif ()
   SET_TARGET_PROPERTIES(${KWSYS_TARGET_OBJECT} PROPERTIES
     C_CLANG_TIDY ""
     CXX_CLANG_TIDY ""
@@ -922,7 +939,7 @@ IF(KWSYS_C_SRCS OR KWSYS_CXX_SRCS)
   # Set up include usage requirement
   IF(COMMAND TARGET_INCLUDE_DIRECTORIES)
     TARGET_INCLUDE_DIRECTORIES(${KWSYS_TARGET_INTERFACE} INTERFACE
-      $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
+      $<BUILD_INTERFACE:${KWSYS_HEADER_ROOT}>)
     IF(KWSYS_INSTALL_INCLUDE_DIR)
       TARGET_INCLUDE_DIRECTORIES(${KWSYS_TARGET_INTERFACE} INTERFACE
         $<INSTALL_INTERFACE:${KWSYS_INSTALL_INCLUDE_DIR}>)
@@ -932,6 +949,9 @@ IF(KWSYS_C_SRCS OR KWSYS_CXX_SRCS)
   # Create an install target for the library.
   IF(KWSYS_INSTALL_LIBRARY_RULE)
     INSTALL(TARGETS ${KWSYS_TARGET_INSTALL} ${KWSYS_INSTALL_LIBRARY_RULE})
+  ENDIF()
+  IF(KWSYS_INSTALL_NAMELINK_RULE)
+    INSTALL(TARGETS ${KWSYS_TARGET_INSTALL} ${KWSYS_INSTALL_NAMELINK_RULE})
   ENDIF()
 ENDIF()
 
@@ -976,7 +996,7 @@ IF(KWSYS_ENABLE_C AND KWSYS_C_SRCS)
   # Set up include usage requirement
   IF(COMMAND TARGET_INCLUDE_DIRECTORIES)
     TARGET_INCLUDE_DIRECTORIES(${KWSYS_TARGET_C_INTERFACE} INTERFACE
-      $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
+      $<BUILD_INTERFACE:${KWSYS_HEADER_ROOT}>)
     IF(KWSYS_INSTALL_INCLUDE_DIR)
       TARGET_INCLUDE_DIRECTORIES(${KWSYS_TARGET_C_INTERFACE} INTERFACE
         $<INSTALL_INTERFACE:${KWSYS_INSTALL_INCLUDE_DIR}>)
@@ -1178,13 +1198,17 @@ IF(KWSYS_STANDALONE OR CMake_SOURCE_DIR)
     # Some Apple compilers produce bad optimizations in this source.
     IF(APPLE AND CMAKE_C_COMPILER_ID MATCHES "^(GNU|LLVM)$")
       SET(testProcess_COMPILE_FLAGS "${testProcess_COMPILE_FLAGS} -O0")
-    ELSEIF(CMAKE_C_COMPILER_ID STREQUAL "XL" AND
-           NOT (CMAKE_SYSTEM MATCHES "Linux.*ppc64le" AND
-                NOT CMAKE_C_COMPILER_VERSION VERSION_LESS "13.1.1"))
+    ELSEIF(CMAKE_C_COMPILER_ID STREQUAL "XL")
       # Tell IBM XL not to warn about our test infinite loop
-      # v13.1.1 and newer on Linux ppc64le is clang based and does not accept
-      # the -qsuppress option
-      SET(testProcess_COMPILE_FLAGS "${testProcess_COMPILE_FLAGS} -qsuppress=1500-010")
+      IF(CMAKE_SYSTEM MATCHES "Linux.*ppc64le"
+         AND CMAKE_C_COMPILER_VERSION VERSION_LESS "16.1.0"
+         AND NOT CMAKE_C_COMPILER_VERSION VERSION_LESS "13.1.1")
+        # v13.1.[1-6] on Linux ppc64le is clang based and does not accept
+        # the -qsuppress option, so just suppress all warnings.
+        SET(testProcess_COMPILE_FLAGS "${testProcess_COMPILE_FLAGS} -w")
+      ELSE()
+        SET(testProcess_COMPILE_FLAGS "${testProcess_COMPILE_FLAGS} -qsuppress=1500-010")
+      ENDIF()
     ENDIF()
     IF(CMAKE_C_FLAGS MATCHES "-fsanitize=")
       SET(testProcess_COMPILE_FLAGS "${testProcess_COMPILE_FLAGS} -DCRASH_USING_ABORT")

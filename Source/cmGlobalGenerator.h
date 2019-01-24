@@ -23,9 +23,13 @@
 #include "cm_codecvt.hxx"
 
 #if defined(CMAKE_BUILD_WITH_CMAKE)
-#include "cmFileLockPool.h"
+#  include "cmFileLockPool.h"
+#  include "cm_jsoncpp_value.h"
 #endif
 
+#define CMAKE_DIRECTORY_ID_SEP "::@"
+
+class cmDirectoryId;
 class cmExportBuildFileGenerator;
 class cmExternalMakefileProjectGenerator;
 class cmGeneratorTarget;
@@ -33,7 +37,6 @@ class cmLinkLineComputer;
 class cmLocalGenerator;
 class cmMakefile;
 class cmOutputConverter;
-class cmQtAutoGenInitializer;
 class cmSourceFile;
 class cmStateDirectory;
 class cmake;
@@ -67,6 +70,11 @@ public:
   {
     return codecvt::None;
   }
+
+#if defined(CMAKE_BUILD_WITH_CMAKE)
+  /** Get a JSON object describing the generator.  */
+  virtual Json::Value GetJson() const;
+#endif
 
   /** Tell the generator about the target system.  */
   virtual bool SetSystemName(std::string const&, cmMakefile*) { return true; }
@@ -147,9 +155,10 @@ public:
    * Try running cmake and building a file. This is used for dynamically
    * loaded commands, not as part of the usual build process.
    */
-  int TryCompile(const std::string& srcdir, const std::string& bindir,
-                 const std::string& projectName, const std::string& targetName,
-                 bool fast, std::string& output, cmMakefile* mf);
+  int TryCompile(int jobs, const std::string& srcdir,
+                 const std::string& bindir, const std::string& projectName,
+                 const std::string& targetName, bool fast, std::string& output,
+                 cmMakefile* mf);
 
   /**
    * Build a file given the following information. This is a more direct call
@@ -157,14 +166,15 @@ public:
    * empty then all is assumed. clean indicates if a "make clean" should be
    * done first.
    */
-  int Build(const std::string& srcdir, const std::string& bindir,
-            const std::string& projectName, const std::string& targetName,
-            std::string& output, const std::string& makeProgram,
-            const std::string& config, bool clean, bool fast, bool verbose,
-            cmDuration timeout, cmSystemTools::OutputOption outputflag =
-                                  cmSystemTools::OUTPUT_NONE,
-            std::vector<std::string> const& nativeOptions =
-              std::vector<std::string>());
+  int Build(
+    int jobs, const std::string& srcdir, const std::string& bindir,
+    const std::string& projectName, const std::string& targetName,
+    std::string& output, const std::string& makeProgram,
+    const std::string& config, bool clean, bool fast, bool verbose,
+    cmDuration timeout,
+    cmSystemTools::OutputOption outputflag = cmSystemTools::OUTPUT_NONE,
+    std::vector<std::string> const& nativeOptions =
+      std::vector<std::string>());
 
   /**
    * Open a generated IDE project given the following information.
@@ -176,8 +186,10 @@ public:
     std::vector<std::string>& makeCommand, const std::string& makeProgram,
     const std::string& projectName, const std::string& projectDir,
     const std::string& targetName, const std::string& config, bool fast,
-    bool verbose,
+    int jobs, bool verbose,
     std::vector<std::string> const& makeOptions = std::vector<std::string>());
+
+  virtual void PrintBuildCommandAdvice(std::ostream& os, int jobs) const;
 
   /** Generate a "cmake --build" call for a given target and config.  */
   std::string GenerateCMakeBuildCommand(const std::string& target,
@@ -216,7 +228,7 @@ public:
 
   std::string GetExtraGeneratorName() const;
 
-  void AddInstallComponent(const char* component);
+  void AddInstallComponent(const std::string& component);
 
   const std::set<std::string>* GetInstallComponents() const
   {
@@ -227,7 +239,7 @@ public:
 
   const char* GetGlobalSetting(std::string const& name) const;
   bool GlobalSettingIsOn(std::string const& name) const;
-  const char* GetSafeGlobalSetting(std::string const& name) const;
+  std::string GetSafeGlobalSetting(std::string const& name) const;
 
   /** Add a file to the manifest of generated targets for a configuration.  */
   void AddToManifest(std::string const& f);
@@ -281,8 +293,7 @@ public:
   bool NameResolvesToFramework(const std::string& libname) const;
 
   cmMakefile* FindMakefile(const std::string& start_dir) const;
-  ///! Find a local generator by its startdirectory
-  cmLocalGenerator* FindLocalGenerator(const std::string& start_dir) const;
+  cmLocalGenerator* FindLocalGenerator(cmDirectoryId const& id) const;
 
   /** Append the subdirectory for the given configuration.  If anything is
       appended the given prefix and suffix will be appended around it, which
@@ -301,6 +312,10 @@ public:
 
   void IndexTarget(cmTarget* t);
   void IndexGeneratorTarget(cmGeneratorTarget* gt);
+
+  // Index the target using a name that is unique to that target
+  // even if other targets have the same name.
+  std::string IndexGeneratorTargetUniquely(cmGeneratorTarget const* gt);
 
   static bool IsReservedTarget(std::string const& name);
 
@@ -349,6 +364,8 @@ public:
   /** Return true if the generated build tree may contain multiple builds.
       i.e. "Can I build Debug and Release in the same tree?" */
   virtual bool IsMultiConfig() const { return false; }
+
+  virtual bool IsXcode() const { return false; }
 
   /** Return true if we know the exact location of object files.
       If false, store the reason in the given string.
@@ -437,9 +454,9 @@ protected:
 
   virtual bool CheckALLOW_DUPLICATE_CUSTOM_TARGETS() const;
 
-  // Qt auto generators
-  std::vector<std::unique_ptr<cmQtAutoGenInitializer>>
-  CreateQtAutoGenInitializers();
+  /// @brief Qt AUTOMOC/UIC/RCC target generation
+  /// @return true on success
+  bool QtAutoGen();
 
   std::string SelectMakeProgram(const std::string& makeProgram,
                                 const std::string& makeDefault = "") const;
@@ -461,11 +478,8 @@ protected:
     cmCustomCommandLines CommandLines;
     std::vector<std::string> Depends;
     std::string WorkingDir;
-    bool UsesTerminal;
-    GlobalTargetInfo()
-      : UsesTerminal(false)
-    {
-    }
+    bool UsesTerminal = false;
+    GlobalTargetInfo() {}
   };
 
   void CreateDefaultGlobalTargets(std::vector<GlobalTargetInfo>& targets);
@@ -509,6 +523,7 @@ private:
   typedef std::unordered_map<std::string, cmGeneratorTarget*>
     GeneratorTargetMap;
   typedef std::unordered_map<std::string, cmMakefile*> MakefileMap;
+  typedef std::unordered_map<std::string, cmLocalGenerator*> LocalGeneratorMap;
   // Map efficiently from target name to cmTarget instance.
   // Do not use this structure for looping over all targets.
   // It contains both normal and globally visible imported targets.
@@ -519,6 +534,11 @@ private:
   // Do not use this structure for looping over all directories.
   // It may not contain all of them (see note in IndexMakefile method).
   MakefileMap MakefileSearchIndex;
+
+  // Map efficiently from source directory path to cmLocalGenerator instance.
+  // Do not use this structure for looping over all directories.
+  // Its order is not deterministic.
+  LocalGeneratorMap LocalGeneratorSearchIndex;
 
   cmMakefile* TryCompileOuterMakefile;
   // If you add a new map here, make sure it is copied
@@ -578,19 +598,17 @@ private:
                     std::string const& reason) const;
 
   void IndexMakefile(cmMakefile* mf);
+  void IndexLocalGenerator(cmLocalGenerator* lg);
 
   virtual const char* GetBuildIgnoreErrorsFlag() const { return nullptr; }
 
   // Cache directory content and target files to be built.
   struct DirectoryContent
   {
-    long LastDiskTime;
+    long LastDiskTime = -1;
     std::set<std::string> All;
     std::set<std::string> Generated;
-    DirectoryContent()
-      : LastDiskTime(-1)
-    {
-    }
+    DirectoryContent() {}
   };
   std::map<std::string, DirectoryContent> DirectoryContentMap;
 

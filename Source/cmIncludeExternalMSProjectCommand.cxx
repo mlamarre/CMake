@@ -3,11 +3,12 @@
 #include "cmIncludeExternalMSProjectCommand.h"
 
 #ifdef _WIN32
-#include "cmGlobalGenerator.h"
-#include "cmMakefile.h"
-#include "cmStateTypes.h"
-#include "cmSystemTools.h"
-#include "cmTarget.h"
+#  include "cmGlobalGenerator.h"
+#  include "cmMakefile.h"
+#  include "cmStateTypes.h"
+#  include "cmSystemTools.h"
+#  include "cmTarget.h"
+#  include "cmake.h"
 #endif
 
 class cmExecutionStatus;

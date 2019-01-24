@@ -27,9 +27,10 @@ static const char* cmDocumentationName[][2] = { { nullptr,
                                                 { nullptr, nullptr } };
 
 static const char* cmDocumentationUsage[][2] = {
-  { nullptr, "  cmake-gui [options]\n"
-             "  cmake-gui [options] <path-to-source>\n"
-             "  cmake-gui [options] <path-to-existing-build>" },
+  { nullptr,
+    "  cmake-gui [options]\n"
+    "  cmake-gui [options] <path-to-source>\n"
+    "  cmake-gui [options] <path-to-existing-build>" },
   { nullptr, nullptr }
 };
 
@@ -63,13 +64,12 @@ int main(int argc, char** argv)
   doc.addCMakeStandardDocSections();
   if (argc2 > 1 && doc.CheckOptions(argc2, argv2)) {
     // Construct and print requested documentation.
-    cmake hcm(cmake::RoleInternal);
+    cmake hcm(cmake::RoleInternal, cmState::Unknown);
     hcm.SetHomeDirectory("");
     hcm.SetHomeOutputDirectory("");
     hcm.AddCMakePaths();
 
-    std::vector<cmDocumentationEntry> generators;
-    hcm.GetGeneratorDocumentation(generators);
+    auto generators = hcm.GetGeneratorsDocumentation();
     doc.SetName("cmake");
     doc.SetSection("Name", cmDocumentationName);
     doc.SetSection("Usage", cmDocumentationUsage);
@@ -129,15 +129,15 @@ int main(int argc, char** argv)
   QTranslator translator;
   QString transfile = QString("cmake_%1").arg(QLocale::system().name());
   translator.load(transfile, translationsDir.path());
-  app.installTranslator(&translator);
+  QApplication::installTranslator(&translator);
 
   // app setup
-  app.setApplicationName("CMakeSetup");
-  app.setOrganizationName("Kitware");
+  QApplication::setApplicationName("CMakeSetup");
+  QApplication::setOrganizationName("Kitware");
   QIcon appIcon;
   appIcon.addFile(":/Icons/CMakeSetup32.png");
   appIcon.addFile(":/Icons/CMakeSetup128.png");
-  app.setWindowIcon(appIcon);
+  QApplication::setWindowIcon(appIcon);
 
   CMakeSetupDialog dialog;
   dialog.show();
@@ -149,7 +149,7 @@ int main(int argc, char** argv)
   typedef cmsys::CommandLineArguments argT;
   arg.AddArgument("-B", argT::CONCAT_ARGUMENT, &binaryDirectory,
                   "Binary Directory");
-  arg.AddArgument("-H", argT::CONCAT_ARGUMENT, &sourceDirectory,
+  arg.AddArgument("-S", argT::CONCAT_ARGUMENT, &sourceDirectory,
                   "Source Directory");
   // do not complain about unknown options
   arg.StoreUnusedArguments(true);
@@ -158,7 +158,7 @@ int main(int argc, char** argv)
     dialog.setSourceDirectory(QString::fromLocal8Bit(sourceDirectory.c_str()));
     dialog.setBinaryDirectory(QString::fromLocal8Bit(binaryDirectory.c_str()));
   } else {
-    QStringList args = app.arguments();
+    QStringList args = QApplication::arguments();
     if (args.count() == 2) {
       std::string filePath =
         cmSystemTools::CollapseFullPath(args[1].toLocal8Bit().data());
@@ -188,14 +188,14 @@ int main(int argc, char** argv)
     }
   }
 
-  return app.exec();
+  return QApplication::exec();
 }
 
 #if defined(Q_OS_MAC)
-#include "cm_sys_stat.h"
-#include <errno.h>
-#include <string.h>
-#include <unistd.h>
+#  include "cm_sys_stat.h"
+#  include <errno.h>
+#  include <string.h>
+#  include <unistd.h>
 static bool cmOSXInstall(std::string const& dir, std::string const& tool)
 {
   if (tool.empty()) {
@@ -215,12 +215,11 @@ static bool cmOSXInstall(std::string const& dir, std::string const& tool)
   if (symlink(tool.c_str(), link.c_str()) == 0) {
     std::cerr << "Linked: '" << link << "' -> '" << tool << "'\n";
     return true;
-  } else {
-    int err = errno;
-    std::cerr << "Failed: '" << link << "' -> '" << tool
-              << "': " << strerror(err) << "\n";
-    return false;
   }
+  int err = errno;
+  std::cerr << "Failed: '" << link << "' -> '" << tool
+            << "': " << strerror(err) << "\n";
+  return false;
 }
 static int cmOSXInstall(std::string dir)
 {

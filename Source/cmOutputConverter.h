@@ -10,7 +10,6 @@
 #include "cmStateSnapshot.h"
 
 class cmState;
-class cmStateDirectory;
 
 class cmOutputConverter
 {
@@ -92,10 +91,6 @@ public:
   };
   static FortranFormat GetFortranFormat(const char* value);
 
-  static bool ContainedInDirectory(std::string const& local_path,
-                                   std::string const& remote_path,
-                                   cmStateDirectory const& directory);
-
   /**
    * Convert the given remote path to a relative path with respect to
    * the given local path.  Both paths must use forward slashes and not
@@ -106,22 +101,10 @@ public:
   std::string ConvertToRelativePath(std::string const& local_path,
                                     std::string const& remote_path) const;
 
-  /**
-   * Convert the given remote path to a relative path with respect to
-   * the given local path.  Both paths must use forward slashes and not
-   * already be escaped or quoted.
-   */
-  static std::string ForceToRelativePath(std::string const& local_path,
-                                         std::string const& remote_path);
-
 private:
   cmState* GetState() const;
 
-  static int Shell__CharIsWhitespace(char c);
-  static int Shell__CharNeedsQuotesOnUnix(char c);
-  static int Shell__CharNeedsQuotesOnWindows(char c);
   static int Shell__CharNeedsQuotes(char c, int flags);
-  static int Shell__CharIsMakeVariableName(char c);
   static const char* Shell__SkipMakeVariables(const char* c);
   static int Shell__ArgumentNeedsQuotes(const char* in, int flags);
   static std::string Shell__GetArgument(const char* in, int flags);

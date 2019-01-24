@@ -79,13 +79,11 @@ public:
   typedef void (*OutputCallback)(const char*, size_t length, void*);
 
   ///! Send a string to stdout
-  static void Stdout(const char* s);
-  static void Stdout(const char* s, size_t length);
+  static void Stdout(const std::string& s);
   static void SetStdoutCallback(OutputCallback, void* clientData = nullptr);
 
   ///! Send a string to stderr
-  static void Stderr(const char* s);
-  static void Stderr(const char* s, size_t length);
+  static void Stderr(const std::string& s);
   static void SetStderrCallback(OutputCallback, void* clientData = nullptr);
 
   typedef bool (*InterruptCallback)(void*);
@@ -129,6 +127,7 @@ public:
    * as ifdef.
    */
   static bool IsOn(const char* val);
+  static bool IsOn(const std::string& val);
 
   /**
    * does a string indicate a false or off value ? Note that this is
@@ -138,6 +137,7 @@ public:
    * NOTFOUND, *-NOTFOUND or IGNORE will cause IsOff to return true.
    */
   static bool IsOff(const char* val);
+  static bool IsOff(const std::string& val);
 
   ///! Return true if value is NOTFOUND or ends in -NOTFOUND.
   static bool IsNOTFOUND(const char* value);
@@ -333,7 +333,7 @@ public:
   static FileFormat GetFileFormat(const char* ext);
 
   /** Windows if this is true, the CreateProcess in RunCommand will
-   *  not show new consol windows when running programs.
+   *  not show new console windows when running programs.
    */
   static void SetRunCommandHideConsole(bool v) { s_RunCommandHideConsole = v; }
   static bool GetRunCommandHideConsole() { return s_RunCommandHideConsole; }
@@ -372,6 +372,14 @@ public:
   */
   static std::string RelativePath(std::string const& local,
                                   std::string const& remote);
+
+  /**
+   * Convert the given remote path to a relative path with respect to
+   * the given local path.  Both paths must use forward slashes and not
+   * already be escaped or quoted.
+   */
+  static std::string ForceToRelativePath(std::string const& local_path,
+                                         std::string const& remote_path);
 
   /** Joins two paths while collapsing x/../ parts
    * For example CollapseCombinedPath("a/b/c", "../../d") results in "a/d"
@@ -493,6 +501,10 @@ public:
   static bool StringToLong(const char* str, long* value);
   static bool StringToULong(const char* str, unsigned long* value);
 
+  /** Encode a string as a URL.  */
+  static std::string EncodeURL(std::string const& in,
+                               bool escapeSlashes = true);
+
 #ifdef _WIN32
   struct WindowsFileRetry
   {
@@ -500,14 +512,28 @@ public:
     unsigned int Delay;
   };
   static WindowsFileRetry GetWindowsFileRetry();
-
-  /** Get the real path for a given path, removing all symlinks. */
-  static std::string GetRealPath(const std::string& path,
-                                 std::string* errorMessage = 0);
 #endif
+
+  /** Get the real path for a given path, removing all symlinks.
+      This variant of GetRealPath also works on Windows but will
+      resolve subst drives too.  */
+  static std::string GetRealPathResolvingWindowsSubst(
+    const std::string& path, std::string* errorMessage = nullptr);
 
   /** Perform one-time initialization of libuv.  */
   static void InitializeLibUV();
+
+  /** Create a symbolic link if the platform supports it.  Returns whether
+      creation succeeded. */
+  static bool CreateSymlink(const std::string& origName,
+                            const std::string& newName,
+                            std::string* errorMessage = nullptr);
+
+  /** Create a hard link if the platform supports it.  Returns whether
+      creation succeeded. */
+  static bool CreateLink(const std::string& origName,
+                         const std::string& newName,
+                         std::string* errorMessage = nullptr);
 
 private:
   static bool s_ForceUnixPaths;

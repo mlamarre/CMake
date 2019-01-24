@@ -8,6 +8,7 @@
 #include <stack>
 #include <stdio.h>
 #include <string>
+#include <utility>
 #include <vector>
 
 bool cmFortranParser_s::FindIncludeFile(const char* dir,
@@ -42,11 +43,11 @@ bool cmFortranParser_s::FindIncludeFile(const char* dir,
   return false;
 }
 
-cmFortranParser_s::cmFortranParser_s(std::vector<std::string> const& includes,
-                                     std::set<std::string> const& defines,
+cmFortranParser_s::cmFortranParser_s(std::vector<std::string> includes,
+                                     std::set<std::string> defines,
                                      cmFortranSourceInfo& info)
-  : IncludePath(includes)
-  , PPDefinitions(defines)
+  : IncludePath(std::move(includes))
+  , PPDefinitions(std::move(defines))
   , Info(info)
 {
   this->InInterface = false;
@@ -168,11 +169,16 @@ void cmFortranParser_Error(cmFortranParser* parser, const char* msg)
   parser->Error = msg ? msg : "unknown error";
 }
 
-void cmFortranParser_RuleUse(cmFortranParser* parser, const char* name)
+void cmFortranParser_RuleUse(cmFortranParser* parser, const char* module_name)
 {
-  if (!parser->InPPFalseBranch) {
-    parser->Info.Requires.insert(cmSystemTools::LowerCase(name));
+  if (parser->InPPFalseBranch) {
+    return;
   }
+
+  // syntax:   "use module_name"
+  // requires: "module_name.mod"
+  std::string const& mod_name = cmSystemTools::LowerCase(module_name);
+  parser->Info.Requires.insert(mod_name + ".mod");
 }
 
 void cmFortranParser_RuleLineDirective(cmFortranParser* parser,
@@ -225,11 +231,63 @@ void cmFortranParser_RuleInclude(cmFortranParser* parser, const char* name)
   }
 }
 
-void cmFortranParser_RuleModule(cmFortranParser* parser, const char* name)
+void cmFortranParser_RuleModule(cmFortranParser* parser,
+                                const char* module_name)
 {
-  if (!parser->InPPFalseBranch && !parser->InInterface) {
-    parser->Info.Provides.insert(cmSystemTools::LowerCase(name));
+  if (parser->InPPFalseBranch) {
+    return;
   }
+
+  if (!parser->InInterface) {
+    // syntax:   "module module_name"
+    // provides: "module_name.mod"
+    std::string const& mod_name = cmSystemTools::LowerCase(module_name);
+    parser->Info.Provides.insert(mod_name + ".mod");
+  }
+}
+
+void cmFortranParser_RuleSubmodule(cmFortranParser* parser,
+                                   const char* module_name,
+                                   const char* submodule_name)
+{
+  if (parser->InPPFalseBranch) {
+    return;
+  }
+
+  // syntax:   "submodule (module_name) submodule_name"
+  // requires: "module_name.mod"
+  // provides: "module_name@submodule_name.smod"
+  //
+  // FIXME: Some compilers split the submodule part of a module into a
+  // separate "module_name.smod" file.  Whether it is generated or
+  // not depends on conditions more subtle than we currently detect.
+  // For now we depend directly on "module_name.mod".
+
+  std::string const& mod_name = cmSystemTools::LowerCase(module_name);
+  std::string const& sub_name = cmSystemTools::LowerCase(submodule_name);
+  parser->Info.Requires.insert(mod_name + ".mod");
+  parser->Info.Provides.insert(mod_name + "@" + sub_name + ".smod");
+}
+
+void cmFortranParser_RuleSubmoduleNested(cmFortranParser* parser,
+                                         const char* module_name,
+                                         const char* submodule_name,
+                                         const char* nested_submodule_name)
+{
+  if (parser->InPPFalseBranch) {
+    return;
+  }
+
+  // syntax:   "submodule (module_name:submodule_name) nested_submodule_name"
+  // requires: "module_name@submodule_name.smod"
+  // provides: "module_name@nested_submodule_name.smod"
+
+  std::string const& mod_name = cmSystemTools::LowerCase(module_name);
+  std::string const& sub_name = cmSystemTools::LowerCase(submodule_name);
+  std::string const& nest_name =
+    cmSystemTools::LowerCase(nested_submodule_name);
+  parser->Info.Requires.insert(mod_name + "@" + sub_name + ".smod");
+  parser->Info.Provides.insert(mod_name + "@" + nest_name + ".smod");
 }
 
 void cmFortranParser_RuleDefine(cmFortranParser* parser, const char* macro)

@@ -7,6 +7,7 @@ include_directories(
 set(CMakeLib_TESTS
   testGeneratedFileStream.cxx
   testRST.cxx
+  testString.cxx
   testSystemTools.cxx
   testUTF8.cxx
   testXMLParser.cxx
@@ -49,3 +50,6 @@ if(TEST_CompileCommandOutput)
 endif()
 
 add_subdirectory(PseudoMemcheck)
+
+add_executable(testAffinity testAffinity.cxx)
+target_link_libraries(testAffinity CMakeLib)

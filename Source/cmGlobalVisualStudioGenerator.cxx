@@ -19,13 +19,22 @@
 #include "cmSourceFile.h"
 #include "cmState.h"
 #include "cmTarget.h"
+#include "cmake.h"
 
-cmGlobalVisualStudioGenerator::cmGlobalVisualStudioGenerator(cmake* cm)
+cmGlobalVisualStudioGenerator::cmGlobalVisualStudioGenerator(
+  cmake* cm, std::string const& platformInGeneratorName)
   : cmGlobalGenerator(cm)
 {
   cm->GetState()->SetIsGeneratorMultiConfig(true);
   cm->GetState()->SetWindowsShell(true);
   cm->GetState()->SetWindowsVSIDE(true);
+
+  if (platformInGeneratorName.empty()) {
+    this->DefaultPlatformName = "Win32";
+  } else {
+    this->DefaultPlatformName = platformInGeneratorName;
+    this->PlatformInGeneratorName = true;
+  }
 }
 
 cmGlobalVisualStudioGenerator::~cmGlobalVisualStudioGenerator()
@@ -41,6 +50,108 @@ cmGlobalVisualStudioGenerator::GetVersion() const
 void cmGlobalVisualStudioGenerator::SetVersion(VSVersion v)
 {
   this->Version = v;
+}
+
+bool cmGlobalVisualStudioGenerator::SetGeneratorPlatform(std::string const& p,
+                                                         cmMakefile* mf)
+{
+  if (this->GetPlatformName() == "x64") {
+    mf->AddDefinition("CMAKE_FORCE_WIN64", "TRUE");
+  } else if (this->GetPlatformName() == "Itanium") {
+    mf->AddDefinition("CMAKE_FORCE_IA64", "TRUE");
+  }
+  mf->AddDefinition("CMAKE_VS_PLATFORM_NAME", this->GetPlatformName().c_str());
+  return this->cmGlobalGenerator::SetGeneratorPlatform(p, mf);
+}
+
+std::string const& cmGlobalVisualStudioGenerator::GetPlatformName() const
+{
+  if (!this->GeneratorPlatform.empty()) {
+    return this->GeneratorPlatform;
+  }
+  return this->DefaultPlatformName;
+}
+
+const char* cmGlobalVisualStudioGenerator::GetIDEVersion() const
+{
+  switch (this->Version) {
+    case cmGlobalVisualStudioGenerator::VS9:
+      return "9.0";
+    case cmGlobalVisualStudioGenerator::VS10:
+      return "10.0";
+    case cmGlobalVisualStudioGenerator::VS11:
+      return "11.0";
+    case cmGlobalVisualStudioGenerator::VS12:
+      return "12.0";
+    case cmGlobalVisualStudioGenerator::VS14:
+      return "14.0";
+    case cmGlobalVisualStudioGenerator::VS15:
+      return "15.0";
+    case cmGlobalVisualStudioGenerator::VS16:
+      return "16.0";
+  }
+  return "";
+}
+
+void cmGlobalVisualStudioGenerator::WriteSLNHeader(std::ostream& fout)
+{
+  switch (this->Version) {
+    case cmGlobalVisualStudioGenerator::VS9:
+      fout << "Microsoft Visual Studio Solution File, Format Version 10.00\n";
+      fout << "# Visual Studio 2008\n";
+      break;
+    case cmGlobalVisualStudioGenerator::VS10:
+      fout << "Microsoft Visual Studio Solution File, Format Version 11.00\n";
+      if (this->ExpressEdition) {
+        fout << "# Visual C++ Express 2010\n";
+      } else {
+        fout << "# Visual Studio 2010\n";
+      }
+      break;
+    case cmGlobalVisualStudioGenerator::VS11:
+      fout << "Microsoft Visual Studio Solution File, Format Version 12.00\n";
+      if (this->ExpressEdition) {
+        fout << "# Visual Studio Express 2012 for Windows Desktop\n";
+      } else {
+        fout << "# Visual Studio 2012\n";
+      }
+      break;
+    case cmGlobalVisualStudioGenerator::VS12:
+      fout << "Microsoft Visual Studio Solution File, Format Version 12.00\n";
+      if (this->ExpressEdition) {
+        fout << "# Visual Studio Express 2013 for Windows Desktop\n";
+      } else {
+        fout << "# Visual Studio 2013\n";
+      }
+      break;
+    case cmGlobalVisualStudioGenerator::VS14:
+      // Visual Studio 14 writes .sln format 12.00
+      fout << "Microsoft Visual Studio Solution File, Format Version 12.00\n";
+      if (this->ExpressEdition) {
+        fout << "# Visual Studio Express 14 for Windows Desktop\n";
+      } else {
+        fout << "# Visual Studio 14\n";
+      }
+      break;
+    case cmGlobalVisualStudioGenerator::VS15:
+      // Visual Studio 15 writes .sln format 12.00
+      fout << "Microsoft Visual Studio Solution File, Format Version 12.00\n";
+      if (this->ExpressEdition) {
+        fout << "# Visual Studio Express 15 for Windows Desktop\n";
+      } else {
+        fout << "# Visual Studio 15\n";
+      }
+      break;
+    case cmGlobalVisualStudioGenerator::VS16:
+      // Visual Studio 16 writes .sln format 12.00
+      fout << "Microsoft Visual Studio Solution File, Format Version 12.00\n";
+      if (this->ExpressEdition) {
+        fout << "# Visual Studio Express 16 for Windows Desktop\n";
+      } else {
+        fout << "# Visual Studio 16\n";
+      }
+      break;
+  }
 }
 
 std::string cmGlobalVisualStudioGenerator::GetRegistryBase()
@@ -413,7 +524,7 @@ std::string cmGlobalVisualStudioGenerator::GetStartupProjectName(
       return startup;
     } else {
       root->GetMakefile()->IssueMessage(
-        cmake::AUTHOR_WARNING,
+        MessageType::AUTHOR_WARNING,
         "Directory property VS_STARTUP_PROJECT specifies target "
         "'" +
           startup + "' that does not exist.  Ignoring.");
@@ -458,9 +569,9 @@ bool IsVisualStudioMacrosFileRegistered(const std::string& macrosFile,
     lastWriteTime.dwHighDateTime = 0;
     lastWriteTime.dwLowDateTime = 0;
 
-    while (ERROR_SUCCESS == RegEnumKeyExW(hkey, index, subkeyname,
-                                          &cch_subkeyname, 0, keyclass,
-                                          &cch_keyclass, &lastWriteTime)) {
+    while (ERROR_SUCCESS ==
+           RegEnumKeyExW(hkey, index, subkeyname, &cch_subkeyname, 0, keyclass,
+                         &cch_keyclass, &lastWriteTime)) {
       // Open the subkey and query the values of interest:
       HKEY hsubkey = NULL;
       result = RegOpenKeyExW(hkey, subkeyname, 0, KEY_READ, &hsubkey);
@@ -734,44 +845,6 @@ bool cmGlobalVisualStudioGenerator::TargetIsFortranOnly(
   return false;
 }
 
-bool cmGlobalVisualStudioGenerator::TargetIsCSharpOnly(
-  cmGeneratorTarget const* gt)
-{
-  // check to see if this is a C# build
-  std::set<std::string> languages;
-  {
-    // Issue diagnostic if the source files depend on the config.
-    std::vector<cmSourceFile*> sources;
-    if (!gt->GetConfigCommonSourceFiles(sources)) {
-      return false;
-    }
-    // Only "real" targets are allowed to be C# targets.
-    if (gt->Target->GetType() > cmStateEnums::OBJECT_LIBRARY) {
-      return false;
-    }
-  }
-  gt->GetLanguages(languages, "");
-  if (languages.size() == 1) {
-    if (*languages.begin() == "CSharp") {
-      return true;
-    }
-  }
-  return false;
-}
-
-bool cmGlobalVisualStudioGenerator::TargetCanBeReferenced(
-  cmGeneratorTarget const* gt)
-{
-  if (this->TargetIsCSharpOnly(gt)) {
-    return true;
-  }
-  if (gt->GetType() != cmStateEnums::SHARED_LIBRARY &&
-      gt->GetType() != cmStateEnums::EXECUTABLE) {
-    return false;
-  }
-  return true;
-}
-
 bool cmGlobalVisualStudioGenerator::TargetCompare::operator()(
   cmGeneratorTarget const* l, cmGeneratorTarget const* r) const
 {
@@ -916,12 +989,13 @@ bool cmGlobalVisualStudioGenerator::Open(const std::string& bindir,
                                          const std::string& projectName,
                                          bool dryRun)
 {
-  std::string buildDir = cmSystemTools::ConvertToOutputPath(bindir);
-  std::string sln = buildDir + "\\" + projectName + ".sln";
+  std::string sln = bindir + "/" + projectName + ".sln";
 
   if (dryRun) {
     return cmSystemTools::FileExists(sln, true);
   }
+
+  sln = cmSystemTools::ConvertToOutputPath(sln);
 
   return std::async(std::launch::async, OpenSolution, sln).get();
 }

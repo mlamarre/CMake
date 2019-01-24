@@ -10,7 +10,7 @@ Add a library to the project using the specified source files.
 Normal Libraries
 ^^^^^^^^^^^^^^^^
 
-::
+.. code-block:: cmake
 
   add_library(<name> [STATIC | SHARED | MODULE]
               [EXCLUDE_FROM_ALL]
@@ -35,7 +35,7 @@ variable :variable:`BUILD_SHARED_LIBS` is ``ON``.  For ``SHARED`` and
 ``MODULE`` libraries the :prop_tgt:`POSITION_INDEPENDENT_CODE` target
 property is set to ``ON`` automatically.
 A ``SHARED`` or ``STATIC`` library may be marked with the :prop_tgt:`FRAMEWORK`
-target property to create an OS X Framework.
+target property to create an macOS Framework.
 
 If a library does not export any symbols, it must not be declared as a
 ``SHARED`` library.  For example, a Windows resource DLL or a managed C++/CLI
@@ -67,7 +67,7 @@ within IDE.
 Imported Libraries
 ^^^^^^^^^^^^^^^^^^
 
-::
+.. code-block:: cmake
 
   add_library(<name> <SHARED|STATIC|MODULE|OBJECT|UNKNOWN> IMPORTED
               [GLOBAL])
@@ -83,13 +83,16 @@ about the imported library are specified by setting properties whose names
 begin in ``IMPORTED_`` and ``INTERFACE_``.  The most important such
 property is :prop_tgt:`IMPORTED_LOCATION` (and its per-configuration
 variant :prop_tgt:`IMPORTED_LOCATION_<CONFIG>`) which specifies the
-location of the main library file on disk.  See documentation of the
-``IMPORTED_*`` and ``INTERFACE_*`` properties for more information.
+location of the main library file on disk.  Or, for object libraries,
+:prop_tgt:`IMPORTED_OBJECTS` (and :prop_tgt:`IMPORTED_OBJECTS_<CONFIG>`)
+specifies the locations of object files on disk.
+See documentation of the ``IMPORTED_*`` and ``INTERFACE_*`` properties
+for more information.
 
 Object Libraries
 ^^^^^^^^^^^^^^^^
 
-::
+.. code-block:: cmake
 
   add_library(<name> OBJECT <src>...)
 
@@ -110,15 +113,15 @@ along with those compiled from their own sources.  Object libraries
 may contain only sources that compile, header files, and other files
 that would not affect linking of a normal library (e.g. ``.txt``).
 They may contain custom commands generating such sources, but not
-``PRE_BUILD``, ``PRE_LINK``, or ``POST_BUILD`` commands.  Object libraries
-cannot be linked.  Some native build systems (such as Xcode) may not like
-targets that have only object files, so consider adding at least one real
-source file to any target that references ``$<TARGET_OBJECTS:objlib>``.
+``PRE_BUILD``, ``PRE_LINK``, or ``POST_BUILD`` commands.  Some native build
+systems (such as Xcode) may not like targets that have only object files, so
+consider adding at least one real source file to any target that references
+``$<TARGET_OBJECTS:objlib>``.
 
 Alias Libraries
 ^^^^^^^^^^^^^^^
 
-::
+.. code-block:: cmake
 
   add_library(<name> ALIAS <target>)
 
@@ -138,7 +141,7 @@ installed or exported.
 Interface Libraries
 ^^^^^^^^^^^^^^^^^^^
 
-::
+.. code-block:: cmake
 
   add_library(<name> INTERFACE [IMPORTED [GLOBAL]])
 
@@ -150,6 +153,7 @@ the interface target using the commands:
 
 * :command:`set_property`,
 * :command:`target_link_libraries(INTERFACE)`,
+* :command:`target_link_options(INTERFACE)`,
 * :command:`target_include_directories(INTERFACE)`,
 * :command:`target_compile_options(INTERFACE)`,
 * :command:`target_compile_definitions(INTERFACE)`, and

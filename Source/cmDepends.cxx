@@ -7,20 +7,15 @@
 #include "cmLocalGenerator.h"
 #include "cmMakefile.h"
 #include "cmSystemTools.h"
-#include "cmWorkingDirectory.h"
 
 #include "cmsys/FStream.hxx"
 #include <sstream>
 #include <string.h>
 #include <utility>
 
-cmDepends::cmDepends(cmLocalGenerator* lg, const char* targetDir)
-  : CompileDirectory()
-  , LocalGenerator(lg)
-  , Verbose(false)
-  , FileComparison(nullptr)
-  , TargetDirectory(targetDir)
-  , MaxPath(16384)
+cmDepends::cmDepends(cmLocalGenerator* lg, std::string targetDir)
+  : LocalGenerator(lg)
+  , TargetDirectory(std::move(targetDir))
   , Dependee(new char[MaxPath])
   , Depender(new char[MaxPath])
 {
@@ -38,7 +33,7 @@ bool cmDepends::Write(std::ostream& makeDepends, std::ostream& internalDepends)
   std::string srcLang = "CMAKE_DEPENDS_CHECK_";
   srcLang += this->Language;
   cmMakefile* mf = this->LocalGenerator->GetMakefile();
-  const char* srcStr = mf->GetSafeDefinition(srcLang);
+  std::string const& srcStr = mf->GetSafeDefinition(srcLang);
   std::vector<std::string> pairs;
   cmSystemTools::ExpandListArgument(srcStr, pairs);
 
@@ -70,15 +65,13 @@ bool cmDepends::Finalize(std::ostream& /*unused*/, std::ostream& /*unused*/)
   return true;
 }
 
-bool cmDepends::Check(const char* makeFile, const char* internalFile,
+bool cmDepends::Check(const std::string& makeFile,
+                      const std::string& internalFile,
                       std::map<std::string, DependencyVector>& validDeps)
 {
-  // Dependency checks must be done in proper working directory.
-  cmWorkingDirectory workdir(this->CompileDirectory);
-
   // Check whether dependencies must be regenerated.
   bool okay = true;
-  cmsys::ifstream fin(internalFile);
+  cmsys::ifstream fin(internalFile.c_str());
   if (!(fin && this->CheckDependencies(fin, internalFile, validDeps))) {
     // Clear all dependencies so they will be regenerated.
     this->Clear(makeFile);
@@ -89,13 +82,13 @@ bool cmDepends::Check(const char* makeFile, const char* internalFile,
   return okay;
 }
 
-void cmDepends::Clear(const char* file)
+void cmDepends::Clear(const std::string& file)
 {
   // Print verbose output.
   if (this->Verbose) {
     std::ostringstream msg;
     msg << "Clearing dependencies in \"" << file << "\"." << std::endl;
-    cmSystemTools::Stdout(msg.str().c_str());
+    cmSystemTools::Stdout(msg.str());
   }
 
   // Write an empty dependency file.
@@ -115,7 +108,7 @@ bool cmDepends::WriteDependencies(const std::set<std::string>& /*unused*/,
 }
 
 bool cmDepends::CheckDependencies(
-  std::istream& internalDepends, const char* internalDependsFileName,
+  std::istream& internalDepends, const std::string& internalDependsFileName,
   std::map<std::string, DependencyVector>& validDeps)
 {
   // Parse dependencies from the stream.  If any dependee is missing
@@ -178,7 +171,7 @@ bool cmDepends::CheckDependencies(
         std::ostringstream msg;
         msg << "Dependee \"" << dependee << "\" does not exist for depender \""
             << depender << "\"." << std::endl;
-        cmSystemTools::Stdout(msg.str().c_str());
+        cmSystemTools::Stdout(msg.str());
       }
     } else {
       if (dependerExists) {
@@ -195,15 +188,15 @@ bool cmDepends::CheckDependencies(
             std::ostringstream msg;
             msg << "Dependee \"" << dependee << "\" is newer than depender \""
                 << depender << "\"." << std::endl;
-            cmSystemTools::Stdout(msg.str().c_str());
+            cmSystemTools::Stdout(msg.str());
           }
         }
       } else {
         // The dependee exists, but the depender doesn't. Regenerate if the
         // internalDepends file is older than the dependee.
         int result = 0;
-        if ((!this->FileComparison->FileTimeCompare(internalDependsFileName,
-                                                    dependee, &result) ||
+        if ((!this->FileComparison->FileTimeCompare(
+               internalDependsFileName.c_str(), dependee, &result) ||
              result < 0)) {
           // The depends-file is older than the dependee.
           regenerate = true;
@@ -214,7 +207,7 @@ bool cmDepends::CheckDependencies(
             msg << "Dependee \"" << dependee
                 << "\" is newer than depends file \""
                 << internalDependsFileName << "\"." << std::endl;
-            cmSystemTools::Stdout(msg.str().c_str());
+            cmSystemTools::Stdout(msg.str());
           }
         }
       }

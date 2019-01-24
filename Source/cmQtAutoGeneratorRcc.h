@@ -5,6 +5,7 @@
 
 #include "cmConfigure.h" // IWYU pragma: keep
 
+#include "cmFileLock.h"
 #include "cmQtAutoGenerator.h"
 #include "cm_uv.h"
 
@@ -48,7 +49,7 @@ private:
   void PollStage();
   void SetStage(StageT stage);
   // -- Settings file
-  void SettingsFileRead();
+  bool SettingsFileRead();
   void SettingsFileWrite();
   // -- Tests
   bool TestQrcRccFiles();
@@ -69,7 +70,7 @@ private:
 
 private:
   // -- Config settings
-  bool MultiConfig_;
+  bool MultiConfig_ = false;
   // -- Directories
   std::string AutogenBuildDir_;
   std::string IncludeDir_;
@@ -77,6 +78,8 @@ private:
   std::string RccExecutable_;
   std::vector<std::string> RccListOptions_;
   // -- Job
+  std::string LockFile_;
+  cmFileLock LockFileLock_;
   std::string QrcFile_;
   std::string QrcFileName_;
   std::string QrcFileDir_;
@@ -92,12 +95,12 @@ private:
   // -- Settings file
   std::string SettingsFile_;
   std::string SettingsString_;
-  bool SettingsChanged_;
+  bool SettingsChanged_ = false;
   // -- libuv loop
-  StageT Stage_;
-  bool Error_;
-  bool Generate_;
-  bool BuildFileChanged_;
+  StageT Stage_ = StageT::SETTINGS_READ;
+  bool Error_ = false;
+  bool Generate_ = false;
+  bool BuildFileChanged_ = false;
 };
 
 #endif

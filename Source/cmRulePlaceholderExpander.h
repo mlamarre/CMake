@@ -15,16 +15,16 @@ class cmRulePlaceholderExpander
 {
 public:
   cmRulePlaceholderExpander(
-    std::map<std::string, std::string> const& compilers,
-    std::map<std::string, std::string> const& variableMappings,
-    std::string const& compilerSysroot, std::string const& linkerSysroot);
+    std::map<std::string, std::string> compilers,
+    std::map<std::string, std::string> variableMappings,
+    std::string compilerSysroot, std::string linkerSysroot);
 
   void SetTargetImpLib(std::string const& targetImpLib)
   {
     this->TargetImpLib = targetImpLib;
   }
 
-  // Create a struct to hold the varibles passed into
+  // Create a struct to hold the variables passed into
   // ExpandRuleVariables
   struct RuleVariables
   {
@@ -58,6 +58,8 @@ public:
     const char* Includes;
     const char* DependencyFile;
     const char* FilterPrefix;
+    const char* SwiftAuxiliarySources;
+    const char* SwiftModuleName;
   };
 
   // Expand rule variables in CMake of the type found in language rules
