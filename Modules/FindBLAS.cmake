@@ -1,74 +1,6 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
 # file Copyright.txt or https://cmake.org/licensing for details.
 
-<<<<<<< HEAD
-#.rst:
-# FindBLAS
-# --------
-#
-# Find BLAS library
-#
-# This module finds an installed fortran library that implements the
-# BLAS linear-algebra interface (see http://www.netlib.org/blas/).  The
-# list of libraries searched for is taken from the autoconf macro file,
-# acx_blas.m4 (distributed at
-# http://ac-archive.sourceforge.net/ac-archive/acx_blas.html).
-#
-# This module sets the following variables:
-#
-# ::
-#
-#   BLAS_FOUND - set to true if a library implementing the BLAS interface
-#     is found
-#   BLAS_LINKER_FLAGS - uncached list of required linker flags (excluding -l
-#     and -L).
-#   BLAS_LIBRARIES - uncached list of libraries (using full path name) to
-#     link against to use BLAS
-#   BLAS95_LIBRARIES - uncached list of libraries (using full path name)
-#     to link against to use BLAS95 interface
-#   BLAS95_FOUND - set to true if a library implementing the BLAS f95 interface
-#     is found
-#
-# The following variables can be used to control this module:
-#
-# ::
-#
-#   BLA_STATIC  if set on this determines what kind of linkage we do (static)
-#   BLA_VENDOR  if set checks only the specified vendor, if not set checks
-#      all the possibilities
-#   BLA_F95     if set on tries to find the f95 interfaces for BLAS/LAPACK
-#   BLA_PREFER_PKGCONFIG  if set pkg-config will be used to search for a BLAS
-#      library first and if one is found that is preferred
-#
-# List of vendors (BLA_VENDOR) valid in this module:
-#
-# * Goto
-# * OpenBLAS
-# * FLAME
-# * ATLAS PhiPACK
-# * CXML
-# * DXML
-# * SunPerf
-# * SCSL
-# * SGIMATH
-# * IBMESSL
-# * IntelMKL_2017 (using  Single Dynamic Library)
-# * Intel10_32 (intel mkl v10 32 bit)
-# * Intel10_64lp (intel mkl v10 64 bit, lp thread model, lp64 model)
-# * Intel10_64lp_seq (intel mkl v10 64 bit, sequential code, lp64 model)
-# * Intel (older versions of mkl 32 and 64 bit)
-# * ACML
-# * ACML_MP
-# * ACML_GPU
-# * Apple
-# * NAS
-# * Generic
-#
-# .. note::
-#
-#   C/CXX should be enabled to use Intel mkl
-#
-=======
 #[=======================================================================[.rst:
 FindBLAS
 --------
@@ -138,7 +70,6 @@ List of vendors (BLA_VENDOR) valid in this module:
   C/CXX should be enabled to use Intel mkl
 
 #]=======================================================================]
->>>>>>> upstream/master
 
 include(${CMAKE_CURRENT_LIST_DIR}/CheckFunctionExists.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/CheckFortranFunctionExists.cmake)
@@ -239,27 +170,12 @@ macro(Check_Fortran_Libraries LIBRARIES _prefix _name _flags _list _thread)
     mark_as_advanced(${_prefix}${_combined_name}_WORKS)
     set(_libraries_work ${${_prefix}${_combined_name}_WORKS})
   endif()
-<<<<<<< HEAD
-endforeach()
-if(_libraries_work)
-  # Test this combination of libraries.
-  set(CMAKE_REQUIRED_LIBRARIES ${_flags} ${${LIBRARIES}} ${_thread})
-  #message("DEBUG: CMAKE_REQUIRED_LIBRARIES = ${CMAKE_REQUIRED_LIBRARIES}" ${_library})  
-  if (CMAKE_REQUIRED_LIBRARIES MATCHES "mkl_rt")  
-    # dumpbin reports sgemm_ to be in mkl_rt but check_function_exists doesn't find it
-    # checking for functions is being way too cautious this whole thing should be removed
-    # for now the code assumes mkl_rt is BLAS
-    set(${_prefix}${_combined_name}_WORKS BOOL:TRUE)
-  elseif (CMAKE_Fortran_COMPILER_LOADED)
-    check_fortran_function_exists("${_name}" ${_prefix}${_combined_name}_WORKS)
-=======
   if(_libraries_work)
     if("${_list}" STREQUAL "")
       set(${LIBRARIES} "${LIBRARIES}-PLACEHOLDER-FOR-EMPTY-LIBRARIES")
     else()
       set(${LIBRARIES} ${${LIBRARIES}} ${_thread})  # for static link
     endif()
->>>>>>> upstream/master
   else()
     set(${LIBRARIES} FALSE)
   endif()
@@ -831,186 +747,6 @@ if (BLA_VENDOR STREQUAL "Generic" OR BLA_VENDOR STREQUAL "All")
       ""
       )
   endif()
-<<<<<<< HEAD
-
-  set(BLAS_SEARCH_LIBS "")
-
-  if(BLA_F95)
-    set(BLAS_mkl_SEARCH_SYMBOL SGEMM)
-    set(_LIBRARIES BLAS95_LIBRARIES)
-    if (WIN32)
-      if (BLA_STATIC)
-        set(BLAS_mkl_DLL_SUFFIX "")
-      else()
-        set(BLAS_mkl_DLL_SUFFIX "_dll")
-      endif()
-
-      # Find the main file (32-bit or 64-bit)
-      set(BLAS_SEARCH_LIBS_WIN_MAIN "")
-      if (BLA_VENDOR STREQUAL "Intel10_32" OR BLA_VENDOR STREQUAL "All")
-        list(APPEND BLAS_SEARCH_LIBS_WIN_MAIN
-          "mkl_blas95${BLAS_mkl_DLL_SUFFIX} mkl_intel_c${BLAS_mkl_DLL_SUFFIX}")
-      endif()
-      if (BLA_VENDOR MATCHES "^Intel10_64lp" OR BLA_VENDOR STREQUAL "All")
-        list(APPEND BLAS_SEARCH_LIBS_WIN_MAIN
-          "mkl_blas95_lp64${BLAS_mkl_DLL_SUFFIX} mkl_intel_lp64${BLAS_mkl_DLL_SUFFIX}")
-      endif ()
-
-      # Add threading/sequential libs
-      set(BLAS_SEARCH_LIBS_WIN_THREAD "")
-      if (BLA_VENDOR MATCHES "_seq$" OR BLA_VENDOR STREQUAL "All")
-        list(APPEND BLAS_SEARCH_LIBS_WIN_THREAD
-          "mkl_sequential${BLAS_mkl_DLL_SUFFIX}")
-      endif()
-      if (NOT BLA_VENDOR MATCHES "_seq$" OR BLA_VENDOR STREQUAL "All")
-        # old version
-        list(APPEND BLAS_SEARCH_LIBS_WIN_THREAD
-          "libguide40 mkl_intel_thread${BLAS_mkl_DLL_SUFFIX}")
-        # mkl >= 10.3
-        list(APPEND BLAS_SEARCH_LIBS_WIN_THREAD
-          "libiomp5md mkl_intel_thread${BLAS_mkl_DLL_SUFFIX}")
-      endif()
-
-      # Cartesian product of the above
-      foreach (MAIN ${BLAS_SEARCH_LIBS_WIN_MAIN})
-        foreach (THREAD ${BLAS_SEARCH_LIBS_WIN_THREAD})
-          list(APPEND BLAS_SEARCH_LIBS
-            "${MAIN} ${THREAD} mkl_core${BLAS_mkl_DLL_SUFFIX}")
-        endforeach()
-      endforeach()
-    else ()
-      if (BLA_VENDOR STREQUAL "Intel10_32" OR BLA_VENDOR STREQUAL "All")
-        list(APPEND BLAS_SEARCH_LIBS
-          "mkl_blas95 mkl_intel mkl_intel_thread mkl_core guide")
-      endif ()
-      if (BLA_VENDOR STREQUAL "Intel10_64lp" OR BLA_VENDOR STREQUAL "All")
-        # old version
-        list(APPEND BLAS_SEARCH_LIBS
-          "mkl_blas95 mkl_intel_lp64 mkl_intel_thread mkl_core guide")
-
-        # mkl >= 10.3
-        if (CMAKE_C_COMPILER MATCHES ".+gcc")
-          list(APPEND BLAS_SEARCH_LIBS
-            "mkl_blas95_lp64 mkl_intel_lp64 mkl_gnu_thread mkl_core gomp")
-        else ()
-          list(APPEND BLAS_SEARCH_LIBS
-            "mkl_blas95_lp64 mkl_intel_lp64 mkl_intel_thread mkl_core iomp5")
-        endif ()
-      endif ()
-      if (BLA_VENDOR STREQUAL "Intel10_64lp_seq" OR BLA_VENDOR STREQUAL "All")
-        list(APPEND BLAS_SEARCH_LIBS
-          "mkl_intel_lp64 mkl_sequential mkl_core")
-      endif ()
-    endif ()
-  else ()
-    set(BLAS_mkl_SEARCH_SYMBOL sgemm)
-    set(_LIBRARIES BLAS_LIBRARIES)
-    if (WIN32)
-      if (BLA_STATIC)
-        set(BLAS_mkl_DLL_SUFFIX "")
-      else()
-        set(BLAS_mkl_DLL_SUFFIX "_dll")
-      endif()
-
-      # Find the main file (32-bit or 64-bit)
-      set(BLAS_SEARCH_LIBS_WIN_MAIN "")
-      if (BLA_VENDOR STREQUAL "IntelMKL_2017" OR BLA_VENDOR STREQUAL "All")
-        list(APPEND BLAS_SEARCH_LIBS_WIN_MAIN
-          "mkl_rt")
-      endif()
-      if (BLA_VENDOR STREQUAL "Intel10_32" OR BLA_VENDOR STREQUAL "All")
-        list(APPEND BLAS_SEARCH_LIBS_WIN_MAIN
-          "mkl_intel_c${BLAS_mkl_DLL_SUFFIX}")
-      endif()
-      if (BLA_VENDOR MATCHES "^Intel10_64lp" OR BLA_VENDOR STREQUAL "All")
-        list(APPEND BLAS_SEARCH_LIBS_WIN_MAIN
-          "mkl_intel_lp64${BLAS_mkl_DLL_SUFFIX}")
-      endif ()
-
-      # Add threading/sequential libs
-      set(BLAS_SEARCH_LIBS_WIN_THREAD "")
-      if (NOT BLA_VENDOR MATCHES "_seq$" OR BLA_VENDOR STREQUAL "All")
-        # old version
-        list(APPEND BLAS_SEARCH_LIBS_WIN_THREAD
-          "libguide40 mkl_intel_thread${BLAS_mkl_DLL_SUFFIX}")
-        # mkl >= 10.3
-        list(APPEND BLAS_SEARCH_LIBS_WIN_THREAD
-          "libiomp5md mkl_intel_thread${BLAS_mkl_DLL_SUFFIX}")
-      endif()
-      if (BLA_VENDOR MATCHES "_seq$" OR BLA_VENDOR STREQUAL "All")
-        list(APPEND BLAS_SEARCH_LIBS_WIN_THREAD
-          "mkl_sequential${BLAS_mkl_DLL_SUFFIX}")
-      endif()
-
-      # Cartesian product of the above
-      foreach (MAIN ${BLAS_SEARCH_LIBS_WIN_MAIN})
-        foreach (THREAD ${BLAS_SEARCH_LIBS_WIN_THREAD})
-          if (MAIN STREQUAL "mkl_rt")
-            set(BLAS_SEARCH_LIBS "${MAIN}")
-          else()
-            list(APPEND BLAS_SEARCH_LIBS
-              "${MAIN} ${THREAD} mkl_core${BLAS_mkl_DLL_SUFFIX}")
-          endif()
-        endforeach()
-      endforeach()
-    else ()    
-      if (BLA_VENDOR STREQUAL "IntelMKL_2017" OR BLA_VENDOR STREQUAL "All")
-        list(APPEND BLAS_SEARCH_LIBS
-          "")
-      endif ()
-      if (BLA_VENDOR STREQUAL "Intel10_32" OR BLA_VENDOR STREQUAL "All")
-        list(APPEND BLAS_SEARCH_LIBS
-          "mkl_intel mkl_intel_thread mkl_core guide")
-      endif ()
-      if (BLA_VENDOR STREQUAL "Intel10_64lp" OR BLA_VENDOR STREQUAL "All")
-
-        # old version
-        list(APPEND BLAS_SEARCH_LIBS
-          "mkl_intel_lp64 mkl_intel_thread mkl_core guide")
-
-        # mkl >= 10.3
-        if (CMAKE_C_COMPILER MATCHES ".+gcc")
-          list(APPEND BLAS_SEARCH_LIBS
-            "mkl_intel_lp64 mkl_gnu_thread mkl_core gomp")
-        else ()
-          list(APPEND BLAS_SEARCH_LIBS
-            "mkl_intel_lp64 mkl_intel_thread mkl_core iomp5")
-        endif ()
-      endif ()
-      if (BLA_VENDOR STREQUAL "Intel10_64lp_seq" OR BLA_VENDOR STREQUAL "All")
-        list(APPEND BLAS_SEARCH_LIBS
-          "mkl_intel_lp64 mkl_sequential mkl_core")
-      endif ()
-
-      #older vesions of intel mkl libs
-      if (BLA_VENDOR STREQUAL "Intel" OR BLA_VENDOR STREQUAL "All")
-        list(APPEND BLAS_SEARCH_LIBS
-          "mkl")
-        list(APPEND BLAS_SEARCH_LIBS
-          "mkl_ia32")
-        list(APPEND BLAS_SEARCH_LIBS
-          "mkl_em64t")
-      endif ()
-    endif ()
-  endif ()
-
-  foreach (IT ${BLAS_SEARCH_LIBS})
-    string(REPLACE " " ";" SEARCH_LIBS ${IT})
-    if (NOT ${_LIBRARIES})
-      check_fortran_libraries(
-        ${_LIBRARIES}
-        BLAS
-        ${BLAS_mkl_SEARCH_SYMBOL}
-        ""
-        "${SEARCH_LIBS}"
-        "${CMAKE_THREAD_LIBS_INIT};${LM}"
-        )
-    endif ()
-  endforeach ()
-
- endif ()
-=======
->>>>>>> upstream/master
 endif ()
 
 if(NOT BLA_F95)
