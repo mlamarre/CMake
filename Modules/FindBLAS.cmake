@@ -35,7 +35,7 @@ The following variables may be set to influence this module's behavior:
   * SCSL
   * SGIMATH
   * IBMESSL
-  * IntelMKL_20** (using Single Dynamic Library)
+  * IntelMKL_RT (using Single Dynamic Library)
   * Intel10_32 (intel mkl v10 32 bit)
   * Intel10_64lp (intel mkl v10+ 64 bit, threaded code, lp64 model)
   * Intel10_64lp_seq (intel mkl v10+ 64 bit, sequential code, lp64 model)
@@ -280,7 +280,7 @@ if (BLA_VENDOR MATCHES "Intel" OR BLA_VENDOR STREQUAL "All")
         if (WIN32)
           # Find the main file (32-bit or 64-bit)
           set(BLAS_SEARCH_LIBS_WIN_MAIN "")
-          if (BLA_VENDOR STREQUAL "IntelMKL_2017" OR BLA_VENDOR STREQUAL "All")
+          if (BLA_VENDOR STREQUAL "IntelMKL_RT" OR BLA_VENDOR STREQUAL "All")
             list(APPEND BLAS_SEARCH_LIBS_WIN_MAIN "mkl_rt")
           endif()
           if (BLA_VENDOR STREQUAL "Intel10_32" OR BLA_VENDOR STREQUAL "All")
@@ -319,7 +319,7 @@ if (BLA_VENDOR MATCHES "Intel" OR BLA_VENDOR STREQUAL "All")
             endforeach()
           endforeach()
         else ()
-          if (BLA_VENDOR STREQUAL "IntelMKL_2017" OR BLA_VENDOR STREQUAL "All")
+          if (BLA_VENDOR STREQUAL "IntelMKL_RT" OR BLA_VENDOR STREQUAL "All")
             list(APPEND BLAS_SEARCH_LIBS
               "")
           endif ()
