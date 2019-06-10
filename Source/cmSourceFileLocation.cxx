@@ -11,9 +11,7 @@
 
 #include <assert.h>
 
-cmSourceFileLocation::cmSourceFileLocation()
-{
-}
+cmSourceFileLocation::cmSourceFileLocation() = default;
 
 cmSourceFileLocation::cmSourceFileLocation(const cmSourceFileLocation& loc)
   : Makefile(loc.Makefile)
@@ -42,6 +40,16 @@ cmSourceFileLocation::cmSourceFileLocation(cmMakefile const* mf,
   } else {
     this->UpdateExtension(name);
   }
+}
+
+std::string cmSourceFileLocation::GetFullPath() const
+{
+  std::string path = this->GetDirectory();
+  if (!path.empty()) {
+    path += '/';
+  }
+  path += this->GetName();
+  return path;
 }
 
 void cmSourceFileLocation::Update(cmSourceFileLocation const& loc)

@@ -35,6 +35,9 @@ public:
   cmState();
   ~cmState();
 
+  cmState(const cmState&) = delete;
+  cmState& operator=(const cmState&) = delete;
+
   enum Mode
   {
     Unknown,
@@ -65,6 +68,8 @@ public:
   cmStateSnapshot Pop(cmStateSnapshot const& originSnapshot);
 
   static cmStateEnums::CacheEntryType StringToCacheEntryType(const char*);
+  static bool StringToCacheEntryType(const char*,
+                                     cmStateEnums::CacheEntryType& type);
   static const char* CacheEntryTypeToString(cmStateEnums::CacheEntryType);
   static bool IsCacheEntryType(std::string const& key);
 
@@ -102,7 +107,7 @@ public:
   void RemoveCacheEntryProperty(std::string const& key,
                                 std::string const& propertyName);
 
-  ///! Break up a line like VAR:type="value" into var, type and value
+  //! Break up a line like VAR:type="value" into var, type and value
   static bool ParseCacheEntry(const std::string& entry, std::string& var,
                               std::string& value,
                               cmStateEnums::CacheEntryType& type);

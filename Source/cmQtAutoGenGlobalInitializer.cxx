@@ -6,10 +6,12 @@
 
 #include "cmAlgorithms.h"
 #include "cmCustomCommandLines.h"
+#include "cmDuration.h"
 #include "cmGeneratorTarget.h"
 #include "cmLocalGenerator.h"
 #include "cmMakefile.h"
 #include "cmMessageType.h"
+#include "cmProcessOutput.h"
 #include "cmState.h"
 #include "cmStateTypes.h"
 #include "cmSystemTools.h"
@@ -17,6 +19,24 @@
 
 #include <memory>
 #include <utility>
+
+cmQtAutoGenGlobalInitializer::Keywords::Keywords()
+  : AUTOMOC("AUTOMOC")
+  , AUTOUIC("AUTOUIC")
+  , AUTORCC("AUTORCC")
+  , AUTOMOC_EXECUTABLE("AUTOMOC_EXECUTABLE")
+  , AUTOUIC_EXECUTABLE("AUTOUIC_EXECUTABLE")
+  , AUTORCC_EXECUTABLE("AUTORCC_EXECUTABLE")
+  , SKIP_AUTOGEN("SKIP_AUTOGEN")
+  , SKIP_AUTOMOC("SKIP_AUTOMOC")
+  , SKIP_AUTOUIC("SKIP_AUTOUIC")
+  , SKIP_AUTORCC("SKIP_AUTORCC")
+  , AUTOUIC_OPTIONS("AUTOUIC_OPTIONS")
+  , AUTORCC_OPTIONS("AUTORCC_OPTIONS")
+  , qrc("qrc")
+  , ui("ui")
+{
+}
 
 cmQtAutoGenGlobalInitializer::cmQtAutoGenGlobalInitializer(
   std::vector<cmLocalGenerator*> const& localGenerators)
@@ -72,16 +92,16 @@ cmQtAutoGenGlobalInitializer::cmQtAutoGenGlobalInitializer(
         continue;
       }
 
-      bool const moc = target->GetPropertyAsBool("AUTOMOC");
-      bool const uic = target->GetPropertyAsBool("AUTOUIC");
-      bool const rcc = target->GetPropertyAsBool("AUTORCC");
+      bool const moc = target->GetPropertyAsBool(kw().AUTOMOC);
+      bool const uic = target->GetPropertyAsBool(kw().AUTOUIC);
+      bool const rcc = target->GetPropertyAsBool(kw().AUTORCC);
       if (moc || uic || rcc) {
         std::string const mocExec =
-          target->GetSafeProperty("AUTOMOC_EXECUTABLE");
+          target->GetSafeProperty(kw().AUTOMOC_EXECUTABLE);
         std::string const uicExec =
-          target->GetSafeProperty("AUTOUIC_EXECUTABLE");
+          target->GetSafeProperty(kw().AUTOUIC_EXECUTABLE);
         std::string const rccExec =
-          target->GetSafeProperty("AUTORCC_EXECUTABLE");
+          target->GetSafeProperty(kw().AUTORCC_EXECUTABLE);
 
         // We support Qt4, Qt5 and Qt6
         auto qtVersion = cmQtAutoGenInitializer::GetQtVersion(target);
@@ -129,9 +149,7 @@ cmQtAutoGenGlobalInitializer::cmQtAutoGenGlobalInitializer(
   }
 }
 
-cmQtAutoGenGlobalInitializer::~cmQtAutoGenGlobalInitializer()
-{
-}
+cmQtAutoGenGlobalInitializer::~cmQtAutoGenGlobalInitializer() = default;
 
 void cmQtAutoGenGlobalInitializer::GetOrCreateGlobalTarget(
   cmLocalGenerator* localGen, std::string const& name,
@@ -183,6 +201,65 @@ void cmQtAutoGenGlobalInitializer::AddToGlobalAutoRcc(
       target->Target->AddUtility(targetName, localGen->GetMakefile());
     }
   }
+}
+
+cmQtAutoGen::CompilerFeaturesHandle
+cmQtAutoGenGlobalInitializer::GetCompilerFeatures(
+  std::string const& generator, std::string const& executable,
+  std::string& error)
+{
+  // Check if we have cached features
+  {
+    auto it = this->CompilerFeatures_.find(executable);
+    if (it != this->CompilerFeatures_.end()) {
+      return it->second;
+    }
+  }
+
+  // Check if the executable exists
+  if (!cmSystemTools::FileExists(executable, true)) {
+    error = "The \"";
+    error += generator;
+    error += "\" executable ";
+    error += cmQtAutoGen::Quoted(executable);
+    error += " does not exist.";
+    return cmQtAutoGen::CompilerFeaturesHandle();
+  }
+
+  // Test the executable
+  std::string stdOut;
+  {
+    std::string stdErr;
+    std::vector<std::string> command;
+    command.emplace_back(executable);
+    command.emplace_back("-h");
+    int retVal = 0;
+    const bool runResult = cmSystemTools::RunSingleCommand(
+      command, &stdOut, &stdErr, &retVal, nullptr, cmSystemTools::OUTPUT_NONE,
+      cmDuration::zero(), cmProcessOutput::Auto);
+    if (!runResult) {
+      error = "Test run of \"";
+      error += generator;
+      error += "\" executable ";
+      error += cmQtAutoGen::Quoted(executable) + " failed.\n";
+      error += cmQtAutoGen::QuotedCommand(command);
+      error += "\n";
+      error += stdOut;
+      error += "\n";
+      error += stdErr;
+      return cmQtAutoGen::CompilerFeaturesHandle();
+    }
+  }
+
+  // Create valid handle
+  cmQtAutoGen::CompilerFeaturesHandle res =
+    std::make_shared<cmQtAutoGen::CompilerFeatures>();
+  res->HelpOutput = std::move(stdOut);
+
+  // Register compiler features
+  this->CompilerFeatures_.emplace(executable, res);
+
+  return res;
 }
 
 bool cmQtAutoGenGlobalInitializer::generate()

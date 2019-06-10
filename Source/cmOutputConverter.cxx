@@ -10,7 +10,6 @@
 #include <vector>
 
 #include "cmState.h"
-#include "cmStateDirectory.h"
 #include "cmSystemTools.h"
 
 cmOutputConverter::cmOutputConverter(cmStateSnapshot const& snapshot)
@@ -72,35 +71,12 @@ std::string cmOutputConverter::ConvertDirectorySeparatorsForShell(
   return result;
 }
 
-std::string cmOutputConverter::ConvertToRelativePath(
-  std::string const& local_path, std::string const& remote_path) const
-{
-  if (!this->StateSnapshot.GetDirectory().ContainsBoth(local_path,
-                                                       remote_path)) {
-    return remote_path;
-  }
-
-  return cmSystemTools::ForceToRelativePath(local_path, remote_path);
-}
-
 static bool cmOutputConverterIsShellOperator(const std::string& str)
 {
-  static std::set<std::string> shellOperators;
-  if (shellOperators.empty()) {
-    shellOperators.insert("<");
-    shellOperators.insert(">");
-    shellOperators.insert("<<");
-    shellOperators.insert(">>");
-    shellOperators.insert("|");
-    shellOperators.insert("||");
-    shellOperators.insert("&&");
-    shellOperators.insert("&>");
-    shellOperators.insert("1>");
-    shellOperators.insert("2>");
-    shellOperators.insert("2>&1");
-    shellOperators.insert("1>&2");
-  }
-  return shellOperators.count(str) > 0;
+  static std::set<std::string> const shellOperators{
+    "<", ">", "<<", ">>", "|", "||", "&&", "&>", "1>", "2>", "2>&1", "1>&2"
+  };
+  return (shellOperators.count(str) != 0);
 }
 
 std::string cmOutputConverter::EscapeForShell(const std::string& str,

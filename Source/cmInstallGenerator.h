@@ -21,8 +21,6 @@ class cmMakefile;
  */
 class cmInstallGenerator : public cmScriptGenerator
 {
-  CM_DISABLE_COPY(cmInstallGenerator)
-
 public:
   enum MessageLevel
   {
@@ -37,6 +35,9 @@ public:
                      const char* component, MessageLevel message,
                      bool exclude_from_all);
   ~cmInstallGenerator() override;
+
+  cmInstallGenerator(cmInstallGenerator const&) = delete;
+  cmInstallGenerator& operator=(cmInstallGenerator const&) = delete;
 
   virtual bool HaveInstall();
   virtual void CheckCMP0082(bool& haveSubdirectoryInstall,
@@ -59,7 +60,7 @@ public:
   /** Select message level from CMAKE_INSTALL_MESSAGE or 'never'.  */
   static MessageLevel SelectMessageLevel(cmMakefile* mf, bool never = false);
 
-  virtual void Compute(cmLocalGenerator*) {}
+  virtual bool Compute(cmLocalGenerator*) { return true; }
 
 protected:
   void GenerateScript(std::ostream& os) override;

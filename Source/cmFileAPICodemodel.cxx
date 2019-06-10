@@ -2,6 +2,7 @@
    file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmFileAPICodemodel.h"
 
+#include "cmAlgorithms.h"
 #include "cmCryptoHash.h"
 #include "cmFileAPI.h"
 #include "cmGeneratorExpression.h"
@@ -477,8 +478,7 @@ Json::Value CodemodelConfig::DumpTargets()
   cmGlobalGenerator* gg =
     this->FileAPI.GetCMakeInstance()->GetGlobalGenerator();
   for (cmLocalGenerator const* lg : gg->GetLocalGenerators()) {
-    std::vector<cmGeneratorTarget*> const& list = lg->GetGeneratorTargets();
-    targetList.insert(targetList.end(), list.begin(), list.end());
+    cmAppend(targetList, lg->GetGeneratorTargets());
   }
   std::sort(targetList.begin(), targetList.end(),
             [](cmGeneratorTarget* l, cmGeneratorTarget* r) {
@@ -727,7 +727,7 @@ void Target::ProcessLanguage(std::string const& lang)
     lg->GetTargetDefines(this->GT, this->Config, lang);
   cd.SetDefines(defines);
   std::vector<BT<std::string>> includePathList =
-    lg->GetIncludeDirectories(this->GT, lang, this->Config, true);
+    lg->GetIncludeDirectories(this->GT, lang, this->Config);
   for (BT<std::string> const& i : includePathList) {
     cd.Includes.emplace_back(
       i, this->GT->IsSystemIncludeDirectory(i.Value, this->Config, lang));
@@ -882,7 +882,7 @@ Json::Value Target::DumpSource(cmGeneratorTarget::SourceAndKind const& sk,
 
   std::string const path = sk.Source.Value->GetFullPath();
   source["path"] = RelativeIfUnder(this->TopSource, path);
-  if (sk.Source.Value->GetPropertyAsBool("GENERATED")) {
+  if (sk.Source.Value->GetIsGenerated()) {
     source["isGenerated"] = true;
   }
   this->AddBacktrace(source, sk.Source.Backtrace);

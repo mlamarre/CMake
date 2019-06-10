@@ -30,10 +30,6 @@ typedef std::vector<char> cmCTestSubmitHandlerVectorOfChar;
 class cmCTestSubmitHandler::ResponseParser : public cmXMLParser
 {
 public:
-  ResponseParser() { this->Status = STATUS_OK; }
-  ~ResponseParser() override {}
-
-public:
   enum StatusType
   {
     STATUS_OK,
@@ -41,7 +37,7 @@ public:
     STATUS_ERROR
   };
 
-  StatusType Status;
+  StatusType Status = STATUS_OK;
   std::string Filename;
   std::string MD5;
   std::string Message;
@@ -67,7 +63,7 @@ private:
 
   void CharacterDataHandler(const char* data, int length) override
   {
-    this->CurrentValue.insert(this->CurrentValue.end(), data, data + length);
+    cmAppend(this->CurrentValue, data, data + length);
   }
 
   void EndElement(const std::string& name) override
@@ -97,12 +93,9 @@ static size_t cmCTestSubmitHandlerWriteMemoryCallback(void* ptr, size_t size,
                                                       size_t nmemb, void* data)
 {
   int realsize = static_cast<int>(size * nmemb);
-
-  cmCTestSubmitHandlerVectorOfChar* vec =
-    static_cast<cmCTestSubmitHandlerVectorOfChar*>(data);
   const char* chPtr = static_cast<char*>(ptr);
-  vec->insert(vec->end(), chPtr, chPtr + realsize);
-
+  cmAppend(*static_cast<cmCTestSubmitHandlerVectorOfChar*>(data), chPtr,
+           chPtr + realsize);
   return realsize;
 }
 
@@ -111,10 +104,8 @@ static size_t cmCTestSubmitHandlerCurlDebugCallback(CURL* /*unused*/,
                                                     char* chPtr, size_t size,
                                                     void* data)
 {
-  cmCTestSubmitHandlerVectorOfChar* vec =
-    static_cast<cmCTestSubmitHandlerVectorOfChar*>(data);
-  vec->insert(vec->end(), chPtr, chPtr + size);
-
+  cmAppend(*static_cast<cmCTestSubmitHandlerVectorOfChar*>(data), chPtr,
+           chPtr + size);
   return size;
 }
 
@@ -263,8 +254,7 @@ bool cmCTestSubmitHandler::SubmitUsingHTTP(
         upload_as += ctest_curl.Escape(this->CTest->GetCurrentTag());
         upload_as += "-";
         upload_as += ctest_curl.Escape(this->CTest->GetTestModelString());
-        cmCTestScriptHandler* ch = static_cast<cmCTestScriptHandler*>(
-          this->CTest->GetHandler("script"));
+        cmCTestScriptHandler* ch = this->CTest->GetScriptHandler();
         cmake* cm = ch->GetCMake();
         if (cm) {
           const char* subproject =
@@ -347,7 +337,7 @@ bool cmCTestSubmitHandler::SubmitUsingHTTP(
       if (!chunk.empty()) {
         cmCTestOptionalLog(this->CTest, DEBUG,
                            "CURL output: ["
-                             << cmCTestLogWrite(&*chunk.begin(), chunk.size())
+                             << cmCTestLogWrite(chunk.data(), chunk.size())
                              << "]" << std::endl,
                            this->Quiet);
         this->ParseResponse(chunk);
@@ -356,7 +346,7 @@ bool cmCTestSubmitHandler::SubmitUsingHTTP(
         cmCTestOptionalLog(
           this->CTest, DEBUG,
           "CURL debug output: ["
-            << cmCTestLogWrite(&*chunkDebug.begin(), chunkDebug.size()) << "]"
+            << cmCTestLogWrite(chunkDebug.data(), chunkDebug.size()) << "]"
             << std::endl,
           this->Quiet);
       }
@@ -408,12 +398,11 @@ bool cmCTestSubmitHandler::SubmitUsingHTTP(
           res = ::curl_easy_perform(curl);
 
           if (!chunk.empty()) {
-            cmCTestOptionalLog(
-              this->CTest, DEBUG,
-              "CURL output: ["
-                << cmCTestLogWrite(&*chunk.begin(), chunk.size()) << "]"
-                << std::endl,
-              this->Quiet);
+            cmCTestOptionalLog(this->CTest, DEBUG,
+                               "CURL output: ["
+                                 << cmCTestLogWrite(chunk.data(), chunk.size())
+                                 << "]" << std::endl,
+                               this->Quiet);
             this->ParseResponse(chunk);
           }
 
@@ -437,11 +426,11 @@ bool cmCTestSubmitHandler::SubmitUsingHTTP(
         // avoid deref of begin for zero size array
         if (!chunk.empty()) {
           *this->LogFile << "   Curl output was: "
-                         << cmCTestLogWrite(&*chunk.begin(), chunk.size())
+                         << cmCTestLogWrite(chunk.data(), chunk.size())
                          << std::endl;
           cmCTestLog(this->CTest, ERROR_MESSAGE,
                      "CURL output: ["
-                       << cmCTestLogWrite(&*chunk.begin(), chunk.size()) << "]"
+                       << cmCTestLogWrite(chunk.data(), chunk.size()) << "]"
                        << std::endl);
         }
         ::curl_easy_cleanup(curl);
@@ -490,7 +479,7 @@ void cmCTestSubmitHandler::ParseResponse(
   if (this->HasWarnings || this->HasErrors) {
     cmCTestLog(this->CTest, HANDLER_OUTPUT,
                "   Server Response:\n"
-                 << cmCTestLogWrite(&*chunk.begin(), chunk.size()) << "\n");
+                 << cmCTestLogWrite(chunk.data(), chunk.size()) << "\n");
   }
 }
 
@@ -563,8 +552,7 @@ int cmCTestSubmitHandler::HandleCDashUploadFile(std::string const& file,
   //    has already been uploaded
   // TODO I added support for subproject. You would need to add
   // a "&subproject=subprojectname" to the first POST.
-  cmCTestScriptHandler* ch =
-    static_cast<cmCTestScriptHandler*>(this->CTest->GetHandler("script"));
+  cmCTestScriptHandler* ch = this->CTest->GetScriptHandler();
   cmake* cm = ch->GetCMake();
   const char* subproject = cm->GetState()->GetGlobalProperty("SubProject");
   // TODO: Encode values for a URL instead of trusting caller.
@@ -776,8 +764,7 @@ int cmCTestSubmitHandler::ProcessHandler()
 
   if (!this->Files.empty()) {
     // Submit the explicitly selected files:
-    //
-    files.insert(files.end(), this->Files.begin(), this->Files.end());
+    cmAppend(files, this->Files);
   }
 
   // Add to the list of files to submit from any selected, existing parts:
@@ -823,8 +810,7 @@ int cmCTestSubmitHandler::ProcessHandler()
     }
 
     // Submit files from this part.
-    std::vector<std::string> const& pfiles = this->CTest->GetSubmitFiles(p);
-    files.insert(files.end(), pfiles.begin(), pfiles.end());
+    cmAppend(files, this->CTest->GetSubmitFiles(p));
   }
 
   // Make sure files are unique, but preserve order.
@@ -907,7 +893,7 @@ void cmCTestSubmitHandler::SelectParts(std::set<cmCTest::Part> const& parts)
   }
 }
 
-void cmCTestSubmitHandler::SelectFiles(cmCTest::SetOfStrings const& files)
+void cmCTestSubmitHandler::SelectFiles(std::set<std::string> const& files)
 {
   this->Files.insert(files.begin(), files.end());
 }

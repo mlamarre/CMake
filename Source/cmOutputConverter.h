@@ -27,7 +27,7 @@ public:
   std::string ConvertDirectorySeparatorsForShell(
     const std::string& source) const;
 
-  ///! for existing files convert to output path and short path if spaces
+  //! for existing files convert to output path and short path if spaces
   std::string ConvertToOutputForExisting(const std::string& remote,
                                          OutputFormat format = SHELL) const;
 
@@ -90,16 +90,6 @@ public:
     FortranFormatFree
   };
   static FortranFormat GetFortranFormat(const char* value);
-
-  /**
-   * Convert the given remote path to a relative path with respect to
-   * the given local path.  Both paths must use forward slashes and not
-   * already be escaped or quoted.
-   * The conversion is skipped if the paths are not both in the source
-   * or both in the binary tree.
-   */
-  std::string ConvertToRelativePath(std::string const& local_path,
-                                    std::string const& remote_path) const;
 
 private:
   cmState* GetState() const;

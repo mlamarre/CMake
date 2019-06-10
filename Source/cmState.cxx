@@ -75,14 +75,23 @@ const char* cmState::CacheEntryTypeToString(cmStateEnums::CacheEntryType type)
 
 cmStateEnums::CacheEntryType cmState::StringToCacheEntryType(const char* s)
 {
+  cmStateEnums::CacheEntryType type = cmStateEnums::STRING;
+  StringToCacheEntryType(s, type);
+  return type;
+}
+
+bool cmState::StringToCacheEntryType(const char* s,
+                                     cmStateEnums::CacheEntryType& type)
+{
   int i = 0;
   while (cmCacheEntryTypes[i]) {
     if (strcmp(s, cmCacheEntryTypes[i]) == 0) {
-      return static_cast<cmStateEnums::CacheEntryType>(i);
+      type = static_cast<cmStateEnums::CacheEntryType>(i);
+      return true;
     }
     ++i;
   }
-  return cmStateEnums::STRING;
+  return false;
 }
 
 bool cmState::IsCacheEntryType(std::string const& key)
@@ -545,11 +554,30 @@ const char* cmState::GetGlobalProperty(const std::string& prop)
   }
 #define STRING_LIST_ELEMENT(F) ";" #F
   if (prop == "CMAKE_C_KNOWN_FEATURES") {
-    return FOR_EACH_C_FEATURE(STRING_LIST_ELEMENT) + 1;
+    return &FOR_EACH_C_FEATURE(STRING_LIST_ELEMENT)[1];
+  }
+  if (prop == "CMAKE_C90_KNOWN_FEATURES") {
+    return &FOR_EACH_C90_FEATURE(STRING_LIST_ELEMENT)[1];
+  }
+  if (prop == "CMAKE_C99_KNOWN_FEATURES") {
+    return &FOR_EACH_C99_FEATURE(STRING_LIST_ELEMENT)[1];
+  }
+  if (prop == "CMAKE_C11_KNOWN_FEATURES") {
+    return &FOR_EACH_C11_FEATURE(STRING_LIST_ELEMENT)[1];
   }
   if (prop == "CMAKE_CXX_KNOWN_FEATURES") {
-    return FOR_EACH_CXX_FEATURE(STRING_LIST_ELEMENT) + 1;
+    return &FOR_EACH_CXX_FEATURE(STRING_LIST_ELEMENT)[1];
   }
+  if (prop == "CMAKE_CXX98_KNOWN_FEATURES") {
+    return &FOR_EACH_CXX98_FEATURE(STRING_LIST_ELEMENT)[1];
+  }
+  if (prop == "CMAKE_CXX11_KNOWN_FEATURES") {
+    return &FOR_EACH_CXX11_FEATURE(STRING_LIST_ELEMENT)[1];
+  }
+  if (prop == "CMAKE_CXX14_KNOWN_FEATURES") {
+    return &FOR_EACH_CXX14_FEATURE(STRING_LIST_ELEMENT)[1];
+  }
+
 #undef STRING_LIST_ELEMENT
   return this->GlobalProperties.GetPropertyValue(prop);
 }

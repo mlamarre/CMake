@@ -28,7 +28,8 @@ by default.
 Platform Selection
 ^^^^^^^^^^^^^^^^^^
 
-The default target platform name (architecture) is that of the host.
+The default target platform name (architecture) is that of the host
+and is provided in the :variable:`CMAKE_VS_PLATFORM_NAME_DEFAULT` variable.
 
 The :variable:`CMAKE_GENERATOR_PLATFORM` variable may be set, perhaps
 via the :manual:`cmake(1)` ``-A`` option, to specify a target platform
@@ -45,5 +46,9 @@ Toolset Selection
 The ``v142`` toolset that comes with Visual Studio 16 2019 is selected by
 default.  The :variable:`CMAKE_GENERATOR_TOOLSET` option may be set, perhaps
 via the :manual:`cmake(1)` ``-T`` option, to specify another toolset.
+
+.. |VS_TOOLSET_HOST_ARCH_DEFAULT| replace::
+   By default this generator uses the 64-bit variant on x64 hosts and
+   the 32-bit variant otherwise.
 
 .. include:: VS_TOOLSET_HOST_ARCH.txt

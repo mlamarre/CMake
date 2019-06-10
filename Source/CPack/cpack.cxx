@@ -82,7 +82,7 @@ int cpackDefinitionArgument(const char* argument, const char* cValue,
     return 0;
   }
   std::string key = value.substr(0, pos);
-  value = value.c_str() + pos + 1;
+  value = value.substr(pos + 1);
   def->Map[key] = value;
   cmCPack_Log(def->Log, cmCPackLog::LOG_DEBUG,
               "Set CPack variable: " << key << " to \"" << value << "\""
@@ -90,18 +90,15 @@ int cpackDefinitionArgument(const char* argument, const char* cValue,
   return 1;
 }
 
-static void cpackProgressCallback(const char* message, float progress,
-                                  void* clientdata)
+static void cpackProgressCallback(const std::string& message, float /*unused*/)
 {
-  (void)progress;
-  (void)clientdata;
-
   std::cout << "-- " << message << std::endl;
 }
 
 // this is CPack.
 int main(int argc, char const* const* argv)
 {
+  cmSystemTools::EnsureStdPipes();
 #if defined(_WIN32) && defined(CMAKE_BUILD_WITH_CMAKE)
   // Replace streambuf so we can output Unicode to console
   cmsys::ConsoleBuf::Manager consoleOut(std::cout);
@@ -212,7 +209,7 @@ int main(int argc, char const* const* argv)
   cmake cminst(cmake::RoleScript, cmState::CPack);
   cminst.SetHomeDirectory("");
   cminst.SetHomeOutputDirectory("");
-  cminst.SetProgressCallback(cpackProgressCallback, nullptr);
+  cminst.SetProgressCallback(cpackProgressCallback);
   cminst.GetCurrentSnapshot().SetDefaultDefinitions();
   cmGlobalGenerator cmgg(&cminst);
   cmMakefile globalMF(&cmgg, cminst.GetCurrentSnapshot());

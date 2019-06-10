@@ -10,13 +10,23 @@
 #include "cmake.h"
 
 #if defined(_M_ARM64)
-#  define HOST_PLATFORM_NAME "ARM64";
+#  define HOST_PLATFORM_NAME "ARM64"
+#  define HOST_TOOLS_ARCH ""
 #elif defined(_M_ARM)
-#  define HOST_PLATFORM_NAME "ARM";
+#  define HOST_PLATFORM_NAME "ARM"
+#  define HOST_TOOLS_ARCH ""
 #elif defined(_M_IA64)
-#  define HOST_PLATFORM_NAME "Itanium";
+#  define HOST_PLATFORM_NAME "Itanium"
+#  define HOST_TOOLS_ARCH ""
+#elif defined(_WIN64)
+#  define HOST_PLATFORM_NAME "x64"
+#  define HOST_TOOLS_ARCH "x64"
 #else
-#  include "cmsys/SystemInformation.hxx"
+static bool VSIsWow64()
+{
+  BOOL isWow64 = false;
+  return IsWow64Process(GetCurrentProcess(), &isWow64) && isWow64;
+}
 #endif
 
 static std::string VSHostPlatformName()
@@ -24,11 +34,23 @@ static std::string VSHostPlatformName()
 #ifdef HOST_PLATFORM_NAME
   return HOST_PLATFORM_NAME;
 #else
-  cmsys::SystemInformation info;
-  if (info.Is64Bits()) {
+  if (VSIsWow64()) {
     return "x64";
   } else {
     return "Win32";
+  }
+#endif
+}
+
+static std::string VSHostArchitecture()
+{
+#ifdef HOST_TOOLS_ARCH
+  return HOST_TOOLS_ARCH;
+#else
+  if (VSIsWow64()) {
+    return "x64";
+  } else {
+    return "x86";
   }
 #endif
 }
@@ -72,8 +94,7 @@ static const char* VSVersionToToolset(
     case cmGlobalVisualStudioGenerator::VS15:
       return "v141";
     case cmGlobalVisualStudioGenerator::VS16:
-      // FIXME: VS 2019 Preview 1.1 uses v141 but preview 2 will use v142.
-      return "v141";
+      return "v142";
   }
   return "";
 }
@@ -190,8 +211,8 @@ class cmGlobalVisualStudioVersionedGenerator::Factory16
   : public cmGlobalGeneratorFactory
 {
 public:
-  virtual cmGlobalGenerator* CreateGlobalGenerator(const std::string& name,
-                                                   cmake* cm) const
+  cmGlobalGenerator* CreateGlobalGenerator(const std::string& name,
+                                           cmake* cm) const override
   {
     std::string genName;
     const char* p = cmVS16GenName(name, genName);
@@ -205,7 +226,7 @@ public:
     return 0;
   }
 
-  virtual void GetDocumentation(cmDocumentationEntry& entry) const
+  void GetDocumentation(cmDocumentationEntry& entry) const override
   {
     entry.Name = std::string(vs16generatorName);
     entry.Brief = "Generates Visual Studio 2019 project files.  "
@@ -263,6 +284,7 @@ cmGlobalVisualStudioVersionedGenerator::cmGlobalVisualStudioVersionedGenerator(
   this->DefaultLinkFlagTableName = VSVersionToToolset(this->Version);
   if (this->Version >= cmGlobalVisualStudioGenerator::VS16) {
     this->DefaultPlatformName = VSHostPlatformName();
+    this->DefaultPlatformToolsetHostArchitecture = VSHostArchitecture();
   }
 }
 
@@ -384,6 +406,12 @@ bool cmGlobalVisualStudioVersionedGenerator::InitializeWindows(cmMakefile* mf)
   // If the Win 8.1 SDK is installed then we can select a SDK matching
   // the target Windows version.
   if (this->IsWin81SDKInstalled()) {
+    // VS 2019 does not default to 8.1 so specify it explicitly when needed.
+    if (this->Version >= cmGlobalVisualStudioGenerator::VS16 &&
+        !cmSystemTools::VersionCompareGreater(this->SystemVersion, "8.1")) {
+      this->SetWindowsTargetPlatformVersion("8.1", mf);
+      return true;
+    }
     return cmGlobalVisualStudio14Generator::InitializeWindows(mf);
   }
   // Otherwise we must choose a Win 10 SDK even if we are not targeting
@@ -436,7 +464,8 @@ bool cmGlobalVisualStudioVersionedGenerator::IsWin81SDKInstalled() const
         "HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\"
         "Windows Kits\\Installed Roots;KitsRoot81",
         win81Root, cmSystemTools::KeyWOW64_32)) {
-    return cmSystemTools::FileExists(win81Root + "/um/windows.h", true);
+    return cmSystemTools::FileExists(win81Root + "/include/um/windows.h",
+                                     true);
   }
   return false;
 }

@@ -26,9 +26,7 @@ cmLocalCommonGenerator::cmLocalCommonGenerator(cmGlobalGenerator* gg,
   }
 }
 
-cmLocalCommonGenerator::~cmLocalCommonGenerator()
-{
-}
+cmLocalCommonGenerator::~cmLocalCommonGenerator() = default;
 
 std::string cmLocalCommonGenerator::GetTargetFortranFlags(
   cmGeneratorTarget const* target, std::string const& config)
@@ -46,7 +44,7 @@ std::string cmLocalCommonGenerator::GetTargetFortranFlags(
     target->GetFortranModuleDirectory(this->WorkingDirectory);
   if (!mod_dir.empty()) {
     mod_dir = this->ConvertToOutputFormat(
-      this->ConvertToRelativePath(this->WorkingDirectory, mod_dir),
+      this->MaybeConvertToRelativePath(this->WorkingDirectory, mod_dir),
       cmOutputConverter::SHELL);
   } else {
     mod_dir =

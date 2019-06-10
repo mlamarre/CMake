@@ -5,44 +5,71 @@
 FindLAPACK
 ----------
 
-Find LAPACK library
+Find Linear Algebra PACKage (LAPACK) library
 
 This module finds an installed fortran library that implements the
 LAPACK linear-algebra interface (see http://www.netlib.org/lapack/).
 
 The approach follows that taken for the autoconf macro file,
-acx_lapack.m4 (distributed at
+``acx_lapack.m4`` (distributed at
 http://ac-archive.sourceforge.net/ac-archive/acx_lapack.html).
 
-This module sets the following variables:
+Input Variables
+^^^^^^^^^^^^^^^
 
-::
+The following variables may be set to influence this module's behavior:
 
-  LAPACK_FOUND - set to true if a library implementing the LAPACK interface
-    is found
-  LAPACK_LINKER_FLAGS - uncached list of required linker flags (excluding -l
-    and -L).
-  LAPACK_LIBRARIES - uncached list of libraries (using full path name) to
-    link against to use LAPACK
-  LAPACK95_LIBRARIES - uncached list of libraries (using full path name) to
-    link against to use LAPACK95
-  LAPACK95_FOUND - set to true if a library implementing the LAPACK f95
-    interface is found
-  BLA_STATIC  if set on this determines what kind of linkage we do (static)
-  BLA_VENDOR  if set checks only the specified vendor, if not set checks
-     all the possibilities
-  BLA_F95     if set on tries to find the f95 interfaces for BLAS/LAPACK
+``BLA_STATIC``
+  if ``ON`` use static linkage
 
-List of vendors (BLA_VENDOR) valid in this module:
+``BLA_VENDOR``
+  If set, checks only the specified vendor, if not set checks all the
+  possibilities.  List of vendors valid in this module:
 
-* Intel(mkl)
-* OpenBLAS
-* FLAME
-* ACML
-* Apple
-* NAS
-* Generic
+  * ``Intel10_32`` (intel mkl v10 32 bit)
+  * ``Intel10_64lp`` (intel mkl v10+ 64 bit, threaded code, lp64 model)
+  * ``Intel10_64lp_seq`` (intel mkl v10+ 64 bit, sequential code, lp64 model)
+  * ``Intel10_64ilp`` (intel mkl v10+ 64 bit, threaded code, ilp64 model)
+  * ``Intel10_64ilp_seq`` (intel mkl v10+ 64 bit, sequential code, ilp64 model)
+  * ``Intel`` (obsolete versions of mkl 32 and 64 bit)
+  * ``OpenBLAS``
+  * ``FLAME``
+  * ``ACML``
+  * ``Apple``
+  * ``NAS``
+  * ``Generic``
 
+``BLA_F95``
+  if ``ON`` tries to find BLAS95/LAPACK95
+
+Result Variables
+^^^^^^^^^^^^^^^^
+
+This module defines the following variables:
+
+``LAPACK_FOUND``
+  library implementing the LAPACK interface is found
+``LAPACK_LINKER_FLAGS``
+  uncached list of required linker flags (excluding -l and -L).
+``LAPACK_LIBRARIES``
+  uncached list of libraries (using full path name) to link against
+  to use LAPACK
+``LAPACK95_LIBRARIES``
+  uncached list of libraries (using full path name) to link against
+  to use LAPACK95
+``LAPACK95_FOUND``
+  library implementing the LAPACK95 interface is found
+
+.. note::
+
+  C or CXX must be enabled to use Intel MKL
+
+  For example, to use Intel MKL libraries and/or Intel compiler:
+
+  .. code-block:: cmake
+
+    set(BLA_VENDOR Intel10_64lp)
+    find_package(LAPACK)
 #]=======================================================================]
 
 set(_lapack_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES})
@@ -113,7 +140,7 @@ foreach(_library ${_list})
         set(CMAKE_FIND_LIBRARY_SUFFIXES .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
       endif ()
     else ()
-			if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
         # for ubuntu's libblas3gf and liblapack3gf packages
         set(CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES} .so.3gf)
       endif ()
@@ -142,16 +169,15 @@ if(_libraries_work)
     check_fortran_function_exists(${_name} ${_prefix}${_combined_name}_WORKS)
   endif ()
   set(CMAKE_REQUIRED_LIBRARIES)
-  mark_as_advanced(${_prefix}${_combined_name}_WORKS)
   set(_libraries_work ${${_prefix}${_combined_name}_WORKS})
   #message("DEBUG: ${LIBRARIES} = ${${LIBRARIES}}")
 endif()
 
- if(_libraries_work)
-   set(${LIBRARIES} ${${LIBRARIES}} ${_blas} ${_threads})
- else()
-    set(${LIBRARIES} FALSE)
- endif()
+if(_libraries_work)
+  set(${LIBRARIES} ${${LIBRARIES}} ${_blas} ${_threads})
+else()
+  set(${LIBRARIES} FALSE)
+endif()
 
 endmacro()
 
@@ -302,25 +328,25 @@ if (BLA_VENDOR STREQUAL "FLAME" OR BLA_VENDOR STREQUAL "All")
 endif ()
 
 #acml lapack
- if (BLA_VENDOR MATCHES "ACML" OR BLA_VENDOR STREQUAL "All")
-   if (BLAS_LIBRARIES MATCHES ".+acml.+")
-     set (LAPACK_LIBRARIES ${BLAS_LIBRARIES})
-   endif ()
- endif ()
+if (BLA_VENDOR MATCHES "ACML" OR BLA_VENDOR STREQUAL "All")
+  if (BLAS_LIBRARIES MATCHES ".+acml.+")
+    set (LAPACK_LIBRARIES ${BLAS_LIBRARIES})
+  endif ()
+endif ()
 
 # Apple LAPACK library?
 if (BLA_VENDOR STREQUAL "Apple" OR BLA_VENDOR STREQUAL "All")
- if(NOT LAPACK_LIBRARIES)
-  check_lapack_libraries(
-  LAPACK_LIBRARIES
-  LAPACK
-  cheev
-  ""
-  "Accelerate"
-  "${BLAS_LIBRARIES}"
-  ""
-  )
- endif()
+  if(NOT LAPACK_LIBRARIES)
+    check_lapack_libraries(
+    LAPACK_LIBRARIES
+    LAPACK
+    cheev
+    ""
+    "Accelerate"
+    "${BLAS_LIBRARIES}"
+    ""
+    )
+  endif()
 endif ()
 if (BLA_VENDOR STREQUAL "NAS" OR BLA_VENDOR STREQUAL "All")
   if ( NOT LAPACK_LIBRARIES )
@@ -356,50 +382,50 @@ else()
 endif()
 
 if(BLA_F95)
- if(LAPACK95_LIBRARIES)
-  set(LAPACK95_FOUND TRUE)
- else()
-  set(LAPACK95_FOUND FALSE)
- endif()
- if(NOT LAPACK_FIND_QUIETLY)
-  if(LAPACK95_FOUND)
-    message(STATUS "A library with LAPACK95 API found.")
+  if(LAPACK95_LIBRARIES)
+    set(LAPACK95_FOUND TRUE)
   else()
-    if(LAPACK_FIND_REQUIRED)
-      message(FATAL_ERROR
-      "A required library with LAPACK95 API not found. Please specify library location."
-      )
+    set(LAPACK95_FOUND FALSE)
+  endif()
+  if(NOT LAPACK_FIND_QUIETLY)
+    if(LAPACK95_FOUND)
+      message(STATUS "A library with LAPACK95 API found.")
     else()
-      message(STATUS
-      "A library with LAPACK95 API not found. Please specify library location."
-      )
+      if(LAPACK_FIND_REQUIRED)
+        message(FATAL_ERROR
+        "A required library with LAPACK95 API not found. Please specify library location."
+        )
+      else()
+        message(STATUS
+        "A library with LAPACK95 API not found. Please specify library location."
+        )
+      endif()
     endif()
   endif()
- endif()
- set(LAPACK_FOUND "${LAPACK95_FOUND}")
- set(LAPACK_LIBRARIES "${LAPACK95_LIBRARIES}")
+  set(LAPACK_FOUND "${LAPACK95_FOUND}")
+  set(LAPACK_LIBRARIES "${LAPACK95_LIBRARIES}")
 else()
- if(LAPACK_LIBRARIES)
-  set(LAPACK_FOUND TRUE)
- else()
-  set(LAPACK_FOUND FALSE)
- endif()
-
- if(NOT LAPACK_FIND_QUIETLY)
-  if(LAPACK_FOUND)
-    message(STATUS "A library with LAPACK API found.")
+  if(LAPACK_LIBRARIES)
+    set(LAPACK_FOUND TRUE)
   else()
-    if(LAPACK_FIND_REQUIRED)
-      message(FATAL_ERROR
-      "A required library with LAPACK API not found. Please specify library location."
-      )
+    set(LAPACK_FOUND FALSE)
+  endif()
+
+  if(NOT LAPACK_FIND_QUIETLY)
+    if(LAPACK_FOUND)
+      message(STATUS "A library with LAPACK API found.")
     else()
-      message(STATUS
-      "A library with LAPACK API not found. Please specify library location."
-      )
+      if(LAPACK_FIND_REQUIRED)
+        message(FATAL_ERROR
+        "A required library with LAPACK API not found. Please specify library location."
+        )
+      else()
+        message(STATUS
+        "A library with LAPACK API not found. Please specify library location."
+        )
+      endif()
     endif()
   endif()
- endif()
 endif()
 
 cmake_pop_check_state()

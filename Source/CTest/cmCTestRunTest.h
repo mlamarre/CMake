@@ -27,8 +27,6 @@ class cmCTestRunTest
 public:
   explicit cmCTestRunTest(cmCTestMultiProcessHandler& multiHandler);
 
-  ~cmCTestRunTest() = default;
-
   void SetNumberOfRuns(int n) { this->NumberOfRunsLeft = n; }
   void SetRunUntilFailOn() { this->RunUntilFail = true; }
   void SetTestProperties(cmCTestTestHandler::cmCTestTestProperties* prop)
@@ -59,9 +57,6 @@ public:
 
   // Read and store output.  Returns true if it must be called again.
   void CheckOutput(std::string const& line);
-
-  // Compresses the output, writing to CompressedOutput
-  void CompressOutput();
 
   // launch the test process, return whether it started correctly
   bool StartTest(size_t completed, size_t total);
@@ -107,8 +102,6 @@ private:
   cmCTest* CTest;
   std::unique_ptr<cmProcess> TestProcess;
   std::string ProcessOutput;
-  std::string CompressedOutput;
-  double CompressionRatio;
   // The test results
   cmCTestTestHandler::cmCTestTestResult TestResult;
   cmCTestMultiProcessHandler& MultiTestHandler;

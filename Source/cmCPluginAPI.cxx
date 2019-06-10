@@ -167,8 +167,8 @@ void CCONV cmAddLinkDirectoryForTarget(void* arg, const char* tgt,
   cmTarget* t = mf->FindLocalNonAliasTarget(tgt);
   if (!t) {
     cmSystemTools::Error(
-      "Attempt to add link directories to non-existent target: ", tgt,
-      " for directory ", d);
+      "Attempt to add link directories to non-existent target: " +
+      std::string(tgt) + " for directory " + std::string(d));
     return;
   }
   t->InsertLinkDirectory(d, mf->GetBacktrace());
@@ -474,7 +474,6 @@ int CCONV cmGetTotalArgumentSize(int argc, char** argv)
 // API for source files.
 struct cmCPluginAPISourceFile
 {
-  cmCPluginAPISourceFile() {}
   cmSourceFile* RealSourceFile = nullptr;
   std::string SourceName;
   std::string SourceExtension;
@@ -492,12 +491,16 @@ public:
   typedef std::map<cmSourceFile*, cmCPluginAPISourceFile*> derived;
   typedef derived::iterator iterator;
   typedef derived::value_type value_type;
+  cmCPluginAPISourceFileMap() = default;
   ~cmCPluginAPISourceFileMap()
   {
     for (auto const& i : *this) {
       delete i.second;
     }
   }
+  cmCPluginAPISourceFileMap(const cmCPluginAPISourceFileMap&) = delete;
+  cmCPluginAPISourceFileMap& operator=(const cmCPluginAPISourceFileMap&) =
+    delete;
 };
 cmCPluginAPISourceFileMap cmCPluginAPISourceFiles;
 
@@ -684,26 +687,24 @@ void CCONV cmSourceFileSetName(void* arg, const char* name, const char* dir,
   }
 
   // Next, try the various source extensions
-  for (std::vector<std::string>::const_iterator ext = sourceExts.begin();
-       ext != sourceExts.end(); ++ext) {
+  for (std::string const& ext : sourceExts) {
     hname = pathname;
     hname += ".";
-    hname += *ext;
+    hname += ext;
     if (cmSystemTools::FileExists(hname)) {
-      sf->SourceExtension = *ext;
+      sf->SourceExtension = ext;
       sf->FullPath = hname;
       return;
     }
   }
 
   // Finally, try the various header extensions
-  for (std::vector<std::string>::const_iterator ext = headerExts.begin();
-       ext != headerExts.end(); ++ext) {
+  for (std::string const& ext : headerExts) {
     hname = pathname;
     hname += ".";
-    hname += *ext;
+    hname += ext;
     if (cmSystemTools::FileExists(hname)) {
-      sf->SourceExtension = *ext;
+      sf->SourceExtension = ext;
       sf->FullPath = hname;
       return;
     }
@@ -712,15 +713,13 @@ void CCONV cmSourceFileSetName(void* arg, const char* name, const char* dir,
   std::ostringstream e;
   e << "Cannot find source file \"" << pathname << "\"";
   e << "\n\nTried extensions";
-  for (std::vector<std::string>::const_iterator ext = sourceExts.begin();
-       ext != sourceExts.end(); ++ext) {
-    e << " ." << *ext;
+  for (std::string const& ext : sourceExts) {
+    e << " ." << ext;
   }
-  for (std::vector<std::string>::const_iterator ext = headerExts.begin();
-       ext != headerExts.end(); ++ext) {
-    e << " ." << *ext;
+  for (std::string const& ext : headerExts) {
+    e << " ." << ext;
   }
-  cmSystemTools::Error(e.str().c_str());
+  cmSystemTools::Error(e.str());
 }
 
 void CCONV cmSourceFileSetName2(void* arg, const char* name, const char* dir,

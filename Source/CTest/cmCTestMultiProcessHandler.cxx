@@ -3,11 +3,13 @@
 #include "cmCTestMultiProcessHandler.h"
 
 #include "cmAffinity.h"
+#include "cmAlgorithms.h"
 #include "cmCTest.h"
 #include "cmCTestRunTest.h"
 #include "cmCTestTestHandler.h"
 #include "cmDuration.h"
 #include "cmListFileCache.h"
+#include "cmRange.h"
 #include "cmSystemTools.h"
 #include "cmWorkingDirectory.h"
 
@@ -44,7 +46,6 @@ public:
     : Handler(handler)
   {
   }
-  ~TestComparator() {}
 
   // Sorts tests in descending order of cost
   bool operator()(int index1, int index2) const
@@ -70,9 +71,7 @@ cmCTestMultiProcessHandler::cmCTestMultiProcessHandler()
   this->SerialTestRunning = false;
 }
 
-cmCTestMultiProcessHandler::~cmCTestMultiProcessHandler()
-{
-}
+cmCTestMultiProcessHandler::~cmCTestMultiProcessHandler() = default;
 
 // Set the tests
 void cmCTestMultiProcessHandler::SetTests(TestMap& tests,
@@ -111,8 +110,8 @@ void cmCTestMultiProcessHandler::SetTestLoad(unsigned long load)
                             fake_load_value)) {
     if (!cmSystemTools::StringToULong(fake_load_value.c_str(),
                                       &this->FakeLoadForTesting)) {
-      cmSystemTools::Error("Failed to parse fake load value: ",
-                           fake_load_value.c_str());
+      cmSystemTools::Error("Failed to parse fake load value: " +
+                           fake_load_value);
     }
   }
 }
@@ -538,7 +537,7 @@ void cmCTestMultiProcessHandler::UpdateCostData()
     fout << f << "\n";
   }
   fout.close();
-  cmSystemTools::RenameFile(tmpout.c_str(), fname.c_str());
+  cmSystemTools::RenameFile(tmpout, fname);
 }
 
 void cmCTestMultiProcessHandler::ReadCostData()
@@ -654,16 +653,11 @@ void cmCTestMultiProcessHandler::CreateParallelTestCostList()
 
   // Reverse iterate over the different dependency levels (deepest first).
   // Sort tests within each level by COST and append them to the cost list.
-  for (std::list<TestSet>::reverse_iterator i = priorityStack.rbegin();
-       i != priorityStack.rend(); ++i) {
-    TestSet const& currentSet = *i;
-    TestComparator comp(this);
-
+  for (TestSet const& currentSet : cmReverseRange(priorityStack)) {
     TestList sortedCopy;
-
-    sortedCopy.insert(sortedCopy.end(), currentSet.begin(), currentSet.end());
-
-    std::stable_sort(sortedCopy.begin(), sortedCopy.end(), comp);
+    cmAppend(sortedCopy, currentSet);
+    std::stable_sort(sortedCopy.begin(), sortedCopy.end(),
+                     TestComparator(this));
 
     for (auto const& j : sortedCopy) {
       if (alreadySortedTests.find(j) == alreadySortedTests.end()) {
@@ -692,8 +686,8 @@ void cmCTestMultiProcessHandler::CreateSerialTestCostList()
     presortedList.push_back(i.first);
   }
 
-  TestComparator comp(this);
-  std::stable_sort(presortedList.begin(), presortedList.end(), comp);
+  std::stable_sort(presortedList.begin(), presortedList.end(),
+                   TestComparator(this));
 
   TestSet alreadySortedTests;
 
@@ -996,7 +990,7 @@ static Json::Value DumpCTestInfo(
     const std::vector<std::string>& args = testRun.GetArguments();
     if (!args.empty()) {
       commandAndArgs.reserve(args.size() + 1);
-      commandAndArgs.insert(commandAndArgs.end(), args.begin(), args.end());
+      cmAppend(commandAndArgs, args);
     }
     testInfo["command"] = DumpToJsonArray(commandAndArgs);
   }

@@ -16,9 +16,7 @@
 #include <string.h>
 #include <vector>
 
-cmExtraKateGenerator::cmExtraKateGenerator()
-{
-}
+cmExtraKateGenerator::cmExtraKateGenerator() = default;
 
 cmExternalMakefileProjectGeneratorFactory* cmExtraKateGenerator::GetFactory()
 {
@@ -77,8 +75,8 @@ void cmExtraKateGenerator::WriteTargets(const cmLocalGenerator* lg,
                                         cmGeneratedFileStream& fout) const
 {
   cmMakefile const* mf = lg->GetMakefile();
-  const std::string make = mf->GetRequiredDefinition("CMAKE_MAKE_PROGRAM");
-  const std::string makeArgs =
+  const std::string& make = mf->GetRequiredDefinition("CMAKE_MAKE_PROGRAM");
+  const std::string& makeArgs =
     mf->GetSafeDefinition("CMAKE_KATE_MAKE_ARGUMENTS");
   std::string const& homeOutputDir = lg->GetBinaryDirectory();
 
@@ -198,7 +196,7 @@ void cmExtraKateGenerator::AppendTarget(cmGeneratedFileStream& fout,
 {
   static char JsonSep = ' ';
 
-  fout << "\t\t\t" << JsonSep << "{\"name\":\"" << target
+  fout << "\t\t\t" << JsonSep << R"({"name":")" << target
        << "\", "
           "\"build_cmd\":\""
        << make << " -C \\\"" << (this->UseNinja ? homeOutputDir : path)
@@ -258,7 +256,7 @@ std::string cmExtraKateGenerator::GenerateFilesString(
 
     const std::vector<cmSourceFile*>& sources = makefile->GetSourceFiles();
     for (cmSourceFile* sf : sources) {
-      if (sf->GetPropertyAsBool("GENERATED")) {
+      if (sf->GetIsGenerated()) {
         continue;
       }
 

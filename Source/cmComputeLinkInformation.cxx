@@ -457,8 +457,8 @@ bool cmComputeLinkInformation::Compute()
   // We require a link language for the target.
   if (this->LinkLanguage.empty()) {
     cmSystemTools::Error(
-      "CMake can not determine linker language for target: ",
-      this->Target->GetName().c_str());
+      "CMake can not determine linker language for target: " +
+      this->Target->GetName());
     return false;
   }
 
@@ -1237,7 +1237,7 @@ void cmComputeLinkInformation::AddFrameworkItem(std::string const& item)
     std::ostringstream e;
     e << "Could not parse framework path \"" << item << "\" "
       << "linked by target " << this->Target->GetName() << ".";
-    cmSystemTools::Error(e.str().c_str());
+    cmSystemTools::Error(e.str());
     return;
   }
 
@@ -1266,7 +1266,7 @@ void cmComputeLinkInformation::AddFrameworkItem(std::string const& item)
 void cmComputeLinkInformation::AddDirectoryItem(std::string const& item)
 {
   if (this->Makefile->IsOn("APPLE") &&
-      cmSystemTools::IsPathToFramework(item.c_str())) {
+      cmSystemTools::IsPathToFramework(item)) {
     this->AddFrameworkItem(item);
   } else {
     this->DropDirectoryItem(item);
@@ -1282,7 +1282,7 @@ void cmComputeLinkInformation::DropDirectoryItem(std::string const& item)
     << "\" requests linking to directory \"" << item << "\".  "
     << "Targets may link only to libraries.  "
     << "CMake is dropping the item.";
-  cmSystemTools::Message(e.str().c_str());
+  cmSystemTools::Message(e.str());
 }
 
 void cmComputeLinkInformation::ComputeFrameworkInfo()

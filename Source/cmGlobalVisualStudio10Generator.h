@@ -22,17 +22,14 @@ public:
   bool SetGeneratorPlatform(std::string const& p, cmMakefile* mf) override;
   bool SetGeneratorToolset(std::string const& ts, cmMakefile* mf) override;
 
-  void GenerateBuildCommand(std::vector<std::string>& makeCommand,
-                            const std::string& makeProgram,
-                            const std::string& projectName,
-                            const std::string& projectDir,
-                            const std::string& targetName,
-                            const std::string& config, bool fast, int jobs,
-                            bool verbose,
-                            std::vector<std::string> const& makeOptions =
-                              std::vector<std::string>()) override;
+  std::vector<GeneratedMakeCommand> GenerateBuildCommand(
+    const std::string& makeProgram, const std::string& projectName,
+    const std::string& projectDir, std::vector<std::string> const& targetNames,
+    const std::string& config, bool fast, int jobs, bool verbose,
+    std::vector<std::string> const& makeOptions =
+      std::vector<std::string>()) override;
 
-  ///! create the correct local generator
+  //! create the correct local generator
   cmLocalGenerator* CreateLocalGenerator(cmMakefile* mf) override;
 
   /**
@@ -58,6 +55,7 @@ public:
 
   /** The toolset host architecture name (e.g. x64 for 64-bit host tools).  */
   const char* GetPlatformToolsetHostArchitecture() const;
+  std::string const& GetPlatformToolsetHostArchitectureString() const;
 
   /** The cuda toolset version.  */
   const char* GetPlatformToolsetCuda() const;
@@ -112,6 +110,9 @@ public:
 
   static std::string GetInstalledNsightTegraVersion();
 
+  /** Return the first two components of CMAKE_SYSTEM_VERSION.  */
+  std::string GetApplicationTypeRevision() const;
+
   cmIDEFlagTable const* GetClFlagTable() const;
   cmIDEFlagTable const* GetCSharpFlagTable() const;
   cmIDEFlagTable const* GetRcFlagTable() const;
@@ -152,6 +153,7 @@ protected:
   std::string GeneratorToolsetHostArchitecture;
   std::string GeneratorToolsetCuda;
   std::string DefaultPlatformToolset;
+  std::string DefaultPlatformToolsetHostArchitecture;
   std::string WindowsTargetPlatformVersion;
   std::string SystemName;
   std::string SystemVersion;

@@ -6,6 +6,7 @@
 #include <string.h>
 #include <utility>
 
+#include "cmAlgorithms.h"
 #include "cmMakefile.h"
 #include "cmSystemTools.h"
 
@@ -48,9 +49,7 @@ cmFindCommon::cmFindCommon()
   this->InitializeSearchPathGroups();
 }
 
-cmFindCommon::~cmFindCommon()
-{
-}
+cmFindCommon::~cmFindCommon() = default;
 
 void cmFindCommon::InitializeSearchPathGroups()
 {
@@ -223,7 +222,7 @@ void cmFindCommon::RerootPaths(std::vector<std::string>& paths)
   // If searching both rooted and unrooted paths add the original
   // paths again.
   if (this->FindRootPathMode == RootPathModeBoth) {
-    paths.insert(paths.end(), unrootedPaths.begin(), unrootedPaths.end());
+    cmAppend(paths, unrootedPaths);
   }
 }
 
@@ -312,7 +311,7 @@ void cmFindCommon::AddPathSuffix(std::string const& arg)
 
 void AddTrailingSlash(std::string& s)
 {
-  if (!s.empty() && *s.rbegin() != '/') {
+  if (!s.empty() && s.back() != '/') {
     s += '/';
   }
 }

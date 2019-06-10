@@ -31,9 +31,13 @@ Further variables are set by the optional arguments described in the following.
 If any of these arguments is not used, then the corresponding variables are
 set to the empty string.
 
-If the variable :variable:`CMAKE_PROJECT_<PROJECT-NAME>_INCLUDE` exists,
-the file pointed to by that variable will be included as the last step of the
-project command.
+If the variable :variable:`CMAKE_PROJECT_INCLUDE_BEFORE` exists, the file
+pointed to by that variable will be included as the first step of the project
+command.
+
+If the variable :variable:`CMAKE_PROJECT_<PROJECT-NAME>_INCLUDE`
+or :variable:`CMAKE_PROJECT_INCLUDE` exists, the file pointed to by that
+variable will be included as the last step of the project command.
 
 Options
 ^^^^^^^
@@ -108,12 +112,13 @@ Usage
 The top-level ``CMakeLists.txt`` file for a project must contain a
 literal, direct call to the :command:`project` command; loading one
 through the :command:`include` command is not sufficient.  If no such
-call exists CMake will implicitly add one to the top that enables the
-default languages (``C`` and ``CXX``).
+call exists, CMake will issue a warning and pretend there is a
+``project(Project)`` at the top to enable the default languages
+(``C`` and ``CXX``).
 
 .. note::
-  Call the :command:`cmake_minimum_required` command at the beginning
-  of the top-level ``CMakeLists.txt`` file even before calling the
-  :command:`project()` command.  It is important to establish version and
-  policy settings before invoking other commands whose behavior they
-  may affect.  See also policy :policy:`CMP0000`.
+  Call the :command:`project()` command near the top of the top-level
+  ``CMakeLists.txt``, but *after* calling :command:`cmake_minimum_required`.
+  It is important to establish version and policy settings before invoking
+  other commands whose behavior they may affect.
+  See also policy :policy:`CMP0000`.

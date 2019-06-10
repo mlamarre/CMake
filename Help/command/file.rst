@@ -26,8 +26,8 @@ Synopsis
     file(`MAKE_DIRECTORY`_ [<dir>...])
     file({`COPY`_ | `INSTALL`_} <file>... DESTINATION <dir> [...])
     file(`SIZE`_ <filename> <out-var>)
-    file(`READ_SYMLINK`_ <filename> <out-var>)
-    file(`CREATE_LINK`_ <file> <new-file> [...])
+    file(`READ_SYMLINK`_ <linkname> <out-var>)
+    file(`CREATE_LINK`_ <original> <linkname> [...])
 
   `Path Conversion`_
     file(`RELATIVE_PATH`_ <out-var> <directory> <file>)
@@ -292,7 +292,8 @@ Move a file or directory within a filesystem from ``<oldname>`` to
 
 Remove the given files.  The ``REMOVE_RECURSE`` mode will remove the given
 files and directories, also non-empty directories. No error is emitted if a
-given file does not exist.
+given file does not exist.  Relative input paths are evaluated with respect
+to the current source directory.  Empty input paths are ignored with a warning.
 
 .. _MAKE_DIRECTORY:
 
@@ -311,6 +312,7 @@ Create the given directories and their parents as needed.
        [FILE_PERMISSIONS <permissions>...]
        [DIRECTORY_PERMISSIONS <permissions>...]
        [NO_SOURCE_PERMISSIONS] [USE_SOURCE_PERMISSIONS]
+       [FOLLOW_SYMLINK_CHAIN]
        [FILES_MATCHING]
        [[PATTERN <pattern> | REGEX <regex>]
         [EXCLUDE] [PERMISSIONS <permissions>...]] [...])
@@ -323,6 +325,32 @@ preserves input file timestamps, and optimizes out a file if it exists
 at the destination with the same timestamp.  Copying preserves input
 permissions unless explicit permissions or ``NO_SOURCE_PERMISSIONS``
 are given (default is ``USE_SOURCE_PERMISSIONS``).
+
+If ``FOLLOW_SYMLINK_CHAIN`` is specified, ``COPY`` will recursively resolve
+the symlinks at the paths given until a real file is found, and install
+a corresponding symlink in the destination for each symlink encountered. For
+each symlink that is installed, the resolution is stripped of the directory,
+leaving only the filename, meaning that the new symlink points to a file in
+the same directory as the symlink. This feature is useful on some Unix systems,
+where libraries are installed as a chain of symlinks with version numbers, with
+less specific versions pointing to more specific versions.
+``FOLLOW_SYMLINK_CHAIN`` will install all of these symlinks and the library
+itself into the destination directory. For example, if you have the following
+directory structure:
+
+* ``/opt/foo/lib/libfoo.so.1.2.3``
+* ``/opt/foo/lib/libfoo.so.1.2 -> libfoo.so.1.2.3``
+* ``/opt/foo/lib/libfoo.so.1 -> libfoo.so.1.2``
+* ``/opt/foo/lib/libfoo.so -> libfoo.so.1``
+
+and you do:
+
+.. code-block:: cmake
+
+  file(COPY /opt/foo/lib/libfoo.so DESTINATION lib FOLLOW_SYMLINK_CHAIN)
+
+This will install all of the symlinks and ``libfoo.so.1.2.3`` itself into
+``lib``.
 
 See the :command:`install(DIRECTORY)` command for documentation of
 permissions, ``FILES_MATCHING``, ``PATTERN``, ``REGEX``, and
@@ -350,22 +378,22 @@ pointing to a file and is readable.
 
 .. code-block:: cmake
 
-  file(READ_SYMLINK <filename> <variable>)
+  file(READ_SYMLINK <linkname> <variable>)
 
-Read the symlink at ``<filename>`` and put the result in ``<variable>``.
-Requires that ``<filename>`` is a valid path pointing to a symlink. If
-``<filename>`` does not exist, or is not a symlink, an error is thrown.
+This subcommand queries the symlink ``<linkname>`` and stores the path it
+points to in the result ``<variable>``.  If ``<linkname>`` does not exist or
+is not a symlink, CMake issues a fatal error.
 
 Note that this command returns the raw symlink path and does not resolve
-relative symlinks. If you want to resolve the relative symlink yourself, you
-could do something like this:
+a relative path.  The following is an example of how to ensure that an
+absolute path is obtained:
 
 .. code-block:: cmake
 
-  set(filename "/path/to/foo.sym")
-  file(READ_SYMLINK "${filename}" result)
+  set(linkname "/path/to/foo.sym")
+  file(READ_SYMLINK "${linkname}" result)
   if(NOT IS_ABSOLUTE "${result}")
-    get_filename_component(dir "${filename}" DIRECTORY)
+    get_filename_component(dir "${linkname}" DIRECTORY)
     set(result "${dir}/${result}")
   endif()
 
@@ -373,23 +401,23 @@ could do something like this:
 
 .. code-block:: cmake
 
-  file(CREATE_LINK <file> <new-file>
+  file(CREATE_LINK <original> <linkname>
        [RESULT <result>] [COPY_ON_ERROR] [SYMBOLIC])
 
-Create a link to ``<file>`` at ``<new-file>``.
+Create a link ``<linkname>`` that points to ``<original>``.
+It will be a hard link by default, but providing the ``SYMBOLIC`` option
+results in a symbolic link instead.  Hard links require that ``original``
+exists and is a file, not a directory.  If ``<linkname>`` already exists,
+it will be overwritten.
 
-It is a hard link by default. This can be changed to symbolic links by
-using ``SYMBOLIC``.  The original file needs to exist for hard links.
-
-The ``<result>`` variable, if specified, gets the status of the operation.
-It is set to ``0`` in case of success. Otherwise, it contains the error
-generated. In case of failures, if ``RESULT`` is not specified, a fatal error
-is emitted.
+The ``<result>`` variable, if specified, receives the status of the operation.
+It is set to ``0`` upon success or an error message otherwise.  If ``RESULT``
+is not specified and the operation fails, a fatal error is emitted.
 
 Specifying ``COPY_ON_ERROR`` enables copying the file as a fallback if
-creating the link fails.
-
-Overwrites the ``<new-file>`` if it exists.
+creating the link fails.  It can be useful for handling situations such as
+``<original>`` and ``<linkname>`` being on different drives or mount points,
+which would make them unable to support a hard link.
 
 Path Conversion
 ^^^^^^^^^^^^^^^

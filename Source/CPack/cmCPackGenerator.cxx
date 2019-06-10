@@ -15,6 +15,7 @@
 #include "cmCryptoHash.h"
 #include "cmDuration.h"
 #include "cmFSPermissions.h"
+#include "cmFileTimes.h"
 #include "cmGeneratedFileStream.h"
 #include "cmGlobalGenerator.h"
 #include "cmMakefile.h"
@@ -43,13 +44,8 @@ cmCPackGenerator::~cmCPackGenerator()
   this->MakefileMap = nullptr;
 }
 
-void cmCPackGeneratorProgress(const char* msg, float prog, void* ptr)
-{
-  cmCPackGenerator* self = static_cast<cmCPackGenerator*>(ptr);
-  self->DisplayVerboseOutput(msg, prog);
-}
-
-void cmCPackGenerator::DisplayVerboseOutput(const char* msg, float progress)
+void cmCPackGenerator::DisplayVerboseOutput(const std::string& msg,
+                                            float progress)
 {
   (void)progress;
   cmCPackLogger(cmCPackLog::LOG_VERBOSE, "" << msg << std::endl);
@@ -284,7 +280,7 @@ int cmCPackGenerator::InstallProjectViaInstallCommands(
       std::string output;
       int retVal = 1;
       bool resB = cmSystemTools::RunSingleCommand(
-        ic.c_str(), &output, &output, &retVal, nullptr, this->GeneratorVerbose,
+        ic, &output, &output, &retVal, nullptr, this->GeneratorVerbose,
         cmDuration::zero());
       if (!resB || retVal) {
         std::string tmpFile = this->GetOption("CPACK_TOPLEVEL_DIRECTORY");
@@ -392,10 +388,8 @@ int cmCPackGenerator::InstallProjectViaInstalledDirectories(
                                       std::move(inFileRelative));
         }
         /* If it is not a symlink then do a plain copy */
-        else if (!(cmSystemTools::CopyFileIfDifferent(inFile.c_str(),
-                                                      filePath.c_str()) &&
-                   cmSystemTools::CopyFileTime(inFile.c_str(),
-                                               filePath.c_str()))) {
+        else if (!(cmSystemTools::CopyFileIfDifferent(inFile, filePath) &&
+                   cmFileTimes::Copy(inFile, filePath))) {
           cmCPackLogger(cmCPackLog::LOG_ERROR,
                         "Problem copying file: " << inFile << " -> "
                                                  << filePath << std::endl);
@@ -654,8 +648,8 @@ int cmCPackGenerator::RunPreinstallTarget(
     std::string output;
     int retVal = 1;
     bool resB = cmSystemTools::RunSingleCommand(
-      buildCommand.c_str(), &output, &output, &retVal,
-      installDirectory.c_str(), this->GeneratorVerbose, cmDuration::zero());
+      buildCommand, &output, &output, &retVal, installDirectory.c_str(),
+      this->GeneratorVerbose, cmDuration::zero());
     if (!resB || retVal) {
       std::string tmpFile = this->GetOption("CPACK_TOPLEVEL_DIRECTORY");
       tmpFile += "/PreinstallOutput.log";
@@ -696,7 +690,9 @@ int cmCPackGenerator::InstallCMakeProject(
   cm.SetHomeOutputDirectory("");
   cm.GetCurrentSnapshot().SetDefaultDefinitions();
   cm.AddCMakePaths();
-  cm.SetProgressCallback(cmCPackGeneratorProgress, this);
+  cm.SetProgressCallback([this](const std::string& msg, float prog) {
+    this->DisplayVerboseOutput(msg, prog);
+  });
   cm.SetTrace(this->Trace);
   cm.SetTraceExpand(this->TraceExpand);
   cmGlobalGenerator gg(&cm);
@@ -1077,8 +1073,7 @@ int cmCPackGenerator::DoPackage()
                     << (tempPackageFileName ? tempPackageFileName : "(NULL)")
                     << " to " << (packageFileName ? packageFileName : "(NULL)")
                     << std::endl);
-    if (!cmSystemTools::CopyFileIfDifferent(tempPackageFileName,
-                                            packageFileName)) {
+    if (!cmSystemTools::CopyFileIfDifferent(pkgFileName, tmpPF)) {
       cmCPackLogger(
         cmCPackLog::LOG_ERROR,
         "Problem copying the package: "
@@ -1251,7 +1246,8 @@ bool cmCPackGenerator::ConfigureString(const std::string& inString,
   return true;
 }
 
-bool cmCPackGenerator::ConfigureFile(const char* inName, const char* outName,
+bool cmCPackGenerator::ConfigureFile(const std::string& inName,
+                                     const std::string& outName,
                                      bool copyOnly /* = false */)
 {
   return this->MakefileMap->ConfigureFile(inName, outName, copyOnly, true,
@@ -1260,9 +1256,8 @@ bool cmCPackGenerator::ConfigureFile(const char* inName, const char* outName,
 
 int cmCPackGenerator::CleanTemporaryDirectory()
 {
-  std::string tempInstallDirectoryWithPostfix =
+  std::string tempInstallDirectory =
     this->GetOption("CPACK_TEMPORARY_INSTALL_DIRECTORY");
-  const char* tempInstallDirectory = tempInstallDirectoryWithPostfix.c_str();
   if (cmsys::SystemTools::FileExists(tempInstallDirectory)) {
     cmCPackLogger(cmCPackLog::LOG_OUTPUT,
                   "- Clean temporary : " << tempInstallDirectory << std::endl);

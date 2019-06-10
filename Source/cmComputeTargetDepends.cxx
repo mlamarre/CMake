@@ -11,6 +11,7 @@
 #include "cmMakefile.h"
 #include "cmMessageType.h"
 #include "cmPolicies.h"
+#include "cmRange.h"
 #include "cmSourceFile.h"
 #include "cmState.h"
 #include "cmStateTypes.h"
@@ -103,9 +104,7 @@ cmComputeTargetDepends::cmComputeTargetDepends(cmGlobalGenerator* gg)
     cm->GetState()->GetGlobalPropertyAsBool("GLOBAL_DEPENDS_NO_CYCLES");
 }
 
-cmComputeTargetDepends::~cmComputeTargetDepends()
-{
-}
+cmComputeTargetDepends::~cmComputeTargetDepends() = default;
 
 bool cmComputeTargetDepends::Compute()
 {
@@ -495,7 +494,7 @@ void cmComputeTargetDepends::ComplainAboutBadComponent(
     e << "At least one of these targets is not a STATIC_LIBRARY.  "
       << "Cyclic dependencies are allowed only among static libraries.";
   }
-  cmSystemTools::Error(e.str().c_str());
+  cmSystemTools::Error(e.str());
 }
 
 bool cmComputeTargetDepends::IntraComponent(std::vector<int> const& cmap,
@@ -551,10 +550,9 @@ bool cmComputeTargetDepends::ComputeFinalDepends(
     int head = -1;
     std::set<int> emitted;
     NodeList const& nl = components[c];
-    for (NodeList::const_reverse_iterator ni = nl.rbegin(); ni != nl.rend();
-         ++ni) {
+    for (int ni : cmReverseRange(nl)) {
       std::set<int> visited;
-      if (!this->IntraComponent(cmap, c, *ni, &head, emitted, visited)) {
+      if (!this->IntraComponent(cmap, c, ni, &head, emitted, visited)) {
         // Cycle in add_dependencies within component!
         this->ComplainAboutBadComponent(ccg, c, true);
         return false;

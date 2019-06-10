@@ -5,70 +5,91 @@
 FindBLAS
 --------
 
-Find BLAS library
+Find Basic Linear Algebra Subprograms (BLAS) library
 
-This module finds an installed fortran library that implements the
+This module finds an installed Fortran library that implements the
 BLAS linear-algebra interface (see http://www.netlib.org/blas/).  The
-list of libraries searched for is taken from the autoconf macro file,
-acx_blas.m4 (distributed at
+list of libraries searched for is taken from the ``autoconf`` macro file,
+``acx_blas.m4`` (distributed at
 http://ac-archive.sourceforge.net/ac-archive/acx_blas.html).
 
-This module sets the following variables:
+Input Variables
+^^^^^^^^^^^^^^^
 
-::
+The following variables may be set to influence this module's behavior:
 
-  BLAS_FOUND - set to true if a library implementing the BLAS interface
-    is found
-  BLAS_LINKER_FLAGS - uncached list of required linker flags (excluding -l
-    and -L).
-  BLAS_LIBRARIES - uncached list of libraries (using full path name) to
-    link against to use BLAS (may be empty if compiler implicitly links
-    BLAS)
-  BLAS95_LIBRARIES - uncached list of libraries (using full path name)
-    to link against to use BLAS95 interface
-  BLAS95_FOUND - set to true if a library implementing the BLAS f95 interface
-    is found
+``BLA_STATIC``
+  if ``ON`` use static linkage
 
-The following variables can be used to control this module:
+``BLA_VENDOR``
+  If set, checks only the specified vendor, if not set checks all the
+  possibilities.  List of vendors valid in this module:
 
-::
+  * Goto
+  * OpenBLAS
+  * FLAME
+  * ATLAS PhiPACK
+  * CXML
+  * DXML
+  * SunPerf
+  * SCSL
+  * SGIMATH
+  * IBMESSL
+  * IntelMKL_20** (using Single Dynamic Library)
+  * Intel10_32 (intel mkl v10 32 bit)
+  * Intel10_64lp (intel mkl v10+ 64 bit, threaded code, lp64 model)
+  * Intel10_64lp_seq (intel mkl v10+ 64 bit, sequential code, lp64 model)
+  * Intel10_64ilp (intel mkl v10+ 64 bit, threaded code, ilp64 model)
+  * Intel10_64ilp_seq (intel mkl v10+ 64 bit, sequential code, ilp64 model)
+  * Intel (obsolete versions of mkl 32 and 64 bit)
+  * ACML
+  * ACML_MP
+  * ACML_GPU
+  * Apple
+  * NAS
+  * Generic
 
-  BLA_STATIC  if set on this determines what kind of linkage we do (static)
-  BLA_VENDOR  if set checks only the specified vendor, if not set checks
-     all the possibilities
-  BLA_F95     if set on tries to find the f95 interfaces for BLAS/LAPACK
-  BLA_PREFER_PKGCONFIG  if set pkg-config will be used to search for a BLAS
-     library first and if one is found that is preferred
+``BLA_F95``
+  if ``ON`` tries to find the BLAS95 interfaces
 
-List of vendors (BLA_VENDOR) valid in this module:
+``BLA_PREFER_PKGCONFIG``
+  if set ``pkg-config`` will be used to search for a BLAS library first
+  and if one is found that is preferred
 
-* Goto
-* OpenBLAS
-* FLAME
-* ATLAS PhiPACK
-* CXML
-* DXML
-* SunPerf
-* SCSL
-* SGIMATH
-* IBMESSL
-* IntelMKL_2017 (using Single Dynamic Library)
-* Intel10_32 (intel mkl v10 32 bit)
-* Intel10_64lp (intel mkl v10+ 64 bit, threaded code, lp64 model)
-* Intel10_64lp_seq (intel mkl v10+ 64 bit, sequential code, lp64 model)
-* Intel10_64ilp (intel mkl v10+ 64 bit, threaded code, ilp64 model)
-* Intel10_64ilp_seq (intel mkl v10+ 64 bit, sequential code, ilp64 model)
-* Intel (older versions of mkl 32 and 64 bit)
-* ACML
-* ACML_MP
-* ACML_GPU
-* Apple
-* NAS
-* Generic
+Result Variables
+^^^^^^^^^^^^^^^^
+
+This module defines the following variables:
+
+``BLAS_FOUND``
+  library implementing the BLAS interface is found
+``BLAS_LINKER_FLAGS``
+  uncached list of required linker flags (excluding ``-l`` and ``-L``).
+``BLAS_LIBRARIES``
+  uncached list of libraries (using full path name) to link against
+  to use BLAS (may be empty if compiler implicitly links BLAS)
+``BLAS95_LIBRARIES``
+  uncached list of libraries (using full path name) to link against
+  to use BLAS95 interface
+``BLAS95_FOUND``
+  library implementing the BLAS95 interface is found
 
 .. note::
 
-  C/CXX should be enabled to use Intel mkl
+  C or CXX must be enabled to use Intel Math Kernel Library (MKL)
+
+  For example, to use Intel MKL libraries and/or Intel compiler:
+
+  .. code-block:: cmake
+
+    set(BLA_VENDOR Intel10_64lp)
+    find_package(BLAS)
+
+Hints
+^^^^^
+
+Set ``MKLROOT`` environment variable to a directory that contains an MKL
+installation.
 
 #]=======================================================================]
 
@@ -173,7 +194,6 @@ macro(Check_Fortran_Libraries LIBRARIES _prefix _name _flags _list _thread)
       check_function_exists("${_name}_" ${_prefix}${_combined_name}_WORKS)
     endif()
     set(CMAKE_REQUIRED_LIBRARIES)
-    mark_as_advanced(${_prefix}${_combined_name}_WORKS)
     set(_libraries_work ${${_prefix}${_combined_name}_WORKS})
   endif()
   if(_libraries_work)
@@ -225,7 +245,8 @@ if (BLA_VENDOR MATCHES "Intel" OR BLA_VENDOR STREQUAL "All")
         set(BLAS_mkl_DLL_SUFFIX "_dll")
       endif()
     else()
-      if(CMAKE_Fortran_COMPILER_LOADED AND CMAKE_Fortran_COMPILER_ID STREQUAL "GNU")
+      # Switch to GNU Fortran support layer if needed (but not on Apple, where MKL does not provide it)
+      if(CMAKE_Fortran_COMPILER_LOADED AND CMAKE_Fortran_COMPILER_ID STREQUAL "GNU" AND NOT APPLE)
           set(BLAS_mkl_INTFACE "gf")
           set(BLAS_mkl_THREADING "gnu")
           set(BLAS_mkl_OMP "gomp")
@@ -398,6 +419,23 @@ if (BLA_VENDOR MATCHES "Intel" OR BLA_VENDOR STREQUAL "All")
         endif ()
       endif ()
 
+      if (DEFINED ENV{MKLROOT})
+        if (BLA_VENDOR STREQUAL "Intel10_32")
+          set(_BLAS_MKLROOT_LIB_DIR "$ENV{MKLROOT}/lib/ia32")
+        elseif (BLA_VENDOR MATCHES "^Intel10_64i?lp$" OR BLA_VENDOR MATCHES "^Intel10_64i?lp_seq$")
+          set(_BLAS_MKLROOT_LIB_DIR "$ENV{MKLROOT}/lib/intel64")
+        endif ()
+      endif ()
+      if (_BLAS_MKLROOT_LIB_DIR)
+        if (WIN32)
+          string(APPEND _BLAS_MKLROOT_LIB_DIR "_win")
+        elseif (APPLE)
+          string(APPEND _BLAS_MKLROOT_LIB_DIR "_mac")
+        else ()
+          string(APPEND _BLAS_MKLROOT_LIB_DIR "_lin")
+        endif ()
+      endif ()
+
       foreach (IT ${BLAS_SEARCH_LIBS})
         string(REPLACE " " ";" SEARCH_LIBS ${IT})
         if (NOT ${_LIBRARIES})
@@ -408,6 +446,7 @@ if (BLA_VENDOR MATCHES "Intel" OR BLA_VENDOR STREQUAL "All")
             ""
             "${SEARCH_LIBS}"
             "${CMAKE_THREAD_LIBS_INIT};${BLAS_mkl_LM};${BLAS_mkl_LDL}"
+            "${_BLAS_MKLROOT_LIB_DIR}"
             )
         endif ()
       endforeach ()

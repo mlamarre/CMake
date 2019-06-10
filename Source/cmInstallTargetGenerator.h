@@ -58,7 +58,7 @@ public:
                                         const std::string& config,
                                         NameType nameType = NameNormal);
 
-  void Compute(cmLocalGenerator* lg) override;
+  bool Compute(cmLocalGenerator* lg) override;
 
   cmGeneratorTarget* GetTarget() const { return this->Target; }
 
@@ -69,7 +69,6 @@ public:
   cmListFileBacktrace const& GetBacktrace() const { return this->Backtrace; }
 
 protected:
-  void GenerateScript(std::ostream& os) override;
   void GenerateScriptForConfig(std::ostream& os, const std::string& config,
                                Indent indent) override;
   void GenerateScriptForConfigObjectLibrary(std::ostream& os,

@@ -30,7 +30,45 @@
 namespace cm {
 
 /***
- * RAII class to simplify and insure the safe usage of uv_*_t types. This
+ * RAII class to simplify and ensure the safe usage of uv_loop_t. This includes
+ * making sure resources are properly freed.
+ */
+class uv_loop_ptr
+{
+protected:
+  std::shared_ptr<uv_loop_t> loop;
+
+public:
+  uv_loop_ptr(uv_loop_ptr const&) = delete;
+  uv_loop_ptr& operator=(uv_loop_ptr const&) = delete;
+  uv_loop_ptr(uv_loop_ptr&&) noexcept;
+  uv_loop_ptr& operator=(uv_loop_ptr&&) noexcept;
+
+  // Dtor and ctor need to be inline defined like this for default ctors and
+  // dtors to work.  Some compilers do not like '= default' here.
+  uv_loop_ptr() {} // NOLINT(modernize-use-equals-default)
+  uv_loop_ptr(std::nullptr_t) {}
+  ~uv_loop_ptr() { this->reset(); }
+
+  int init(void* data = nullptr);
+
+  /**
+   * Properly close the handle if needed and sets the inner handle to nullptr
+   */
+  void reset();
+
+  /**
+   * Allow less verbose calling of uv_loop_* functions
+   * @return reinterpreted handle
+   */
+  operator uv_loop_t*();
+
+  uv_loop_t* get() const;
+  uv_loop_t* operator->() const noexcept;
+};
+
+/***
+ * RAII class to simplify and ensure the safe usage of uv_*_t types. This
  * includes making sure resources are properly freed and contains casting
  * operators which allow for passing into relevant uv_* functions.
  *
@@ -61,7 +99,8 @@ protected:
   void allocate(void* data = nullptr);
 
 public:
-  CM_DISABLE_COPY(uv_handle_ptr_base_)
+  uv_handle_ptr_base_(uv_handle_ptr_base_ const&) = delete;
+  uv_handle_ptr_base_& operator=(uv_handle_ptr_base_ const&) = delete;
   uv_handle_ptr_base_(uv_handle_ptr_base_&&) noexcept;
   uv_handle_ptr_base_& operator=(uv_handle_ptr_base_&&) noexcept;
 
@@ -86,8 +125,8 @@ public:
   }
 
   // Dtor and ctor need to be inline defined like this for default ctors and
-  // dtors to work.
-  uv_handle_ptr_base_() {}
+  // dtors to work.  Some compilers do not like '= default' here.
+  uv_handle_ptr_base_() {} // NOLINT(modernize-use-equals-default)
   uv_handle_ptr_base_(std::nullptr_t) {}
   ~uv_handle_ptr_base_() { reset(); }
 

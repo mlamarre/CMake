@@ -188,7 +188,7 @@ bool cmVSSetupAPIHelper::GetVSInstanceInfo(
   // Check if a compiler is installed with this instance.
   {
     std::string const vcRoot = vsInstanceInfo.GetInstallLocation();
-    std::string const vcToolsVersionFile =
+    std::string vcToolsVersionFile =
       vcRoot + "/VC/Auxiliary/Build/Microsoft.VCToolsVersion.default.txt";
     std::string vcToolsVersion;
     cmsys::ifstream fin(vcToolsVersionFile.c_str());

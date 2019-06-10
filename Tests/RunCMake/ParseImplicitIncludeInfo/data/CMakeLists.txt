@@ -12,6 +12,9 @@
 #
 
 cmake_minimum_required(VERSION 3.3)
+if(POLICY CMP0089)
+  cmake_policy(SET CMP0089 NEW)
+endif()
 
 set(lngs C CXX)
 set(LANGUAGES "${lngs}" CACHE STRING "List of languages to generate inputs for")
@@ -34,6 +37,8 @@ foreach(lang IN ITEMS ${LANGUAGES})
     set(file ${CMAKE_ROOT}/Modules/CMakeCXXCompilerABI.cpp)
   elseif("${lang}" STREQUAL "CUDA")
     set(file ${CMAKE_ROOT}/Modules/CMakeCUDACompilerABI.cu)
+  elseif("${lang}" STREQUAL "Fortran")
+    set(file ${CMAKE_ROOT}/Modules/CMakeFortranCompilerABI.F)
   else()
     message(FATAL_ERROR "unknown language ${lang}")
   endif()

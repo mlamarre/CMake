@@ -21,15 +21,12 @@
  */
 class cmGlobVerificationManager
 {
-public:
-  cmGlobVerificationManager() {}
-
 protected:
-  ///! Save verification script for given makefile.
-  ///! Saves to output <path>/<CMakeFilesDirectory>/VerifyGlobs.cmake
+  //! Save verification script for given makefile.
+  //! Saves to output <path>/<CMakeFilesDirectory>/VerifyGlobs.cmake
   bool SaveVerificationScript(const std::string& path);
 
-  ///! Add an entry into the glob cache
+  //! Add an entry into the glob cache
   void AddCacheEntry(bool recurse, bool listDirectories, bool followSymlinks,
                      const std::string& relative,
                      const std::string& expression,
@@ -37,13 +34,13 @@ protected:
                      const std::string& variable,
                      const cmListFileBacktrace& bt);
 
-  ///! Clear the glob cache for state reset.
+  //! Clear the glob cache for state reset.
   void Reset();
 
-  ///! Check targets should be written in generated build system.
+  //! Check targets should be written in generated build system.
   bool DoWriteVerifyTarget() const;
 
-  ///! Get the paths to the generated script and stamp files
+  //! Get the paths to the generated script and stamp files
   std::string const& GetVerifyScript() const { return this->VerifyScript; }
   std::string const& GetVerifyStamp() const { return this->VerifyStamp; }
 
@@ -73,7 +70,6 @@ private:
     bool Initialized = false;
     std::vector<std::string> Files;
     std::vector<std::pair<std::string, cmListFileBacktrace>> Backtraces;
-    CacheEntryValue() {}
   };
 
   typedef std::map<CacheEntryKey, CacheEntryValue> CacheEntryMap;

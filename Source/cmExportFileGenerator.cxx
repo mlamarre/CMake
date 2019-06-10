@@ -70,8 +70,9 @@ bool cmExportFileGenerator::GenerateImportFile()
   std::unique_ptr<cmsys::ofstream> foutPtr;
   if (this->AppendMode) {
     // Open for append.
+    auto openmodeApp = std::ios::app;
     foutPtr = cm::make_unique<cmsys::ofstream>(this->MainImportFile.c_str(),
-                                               std::ios::app);
+                                               openmodeApp);
   } else {
     // Generate atomically and with copy-if-different.
     std::unique_ptr<cmGeneratedFileStream> ap(
@@ -83,7 +84,7 @@ bool cmExportFileGenerator::GenerateImportFile()
     std::string se = cmSystemTools::GetLastSystemError();
     std::ostringstream e;
     e << "cannot write to file \"" << this->MainImportFile << "\": " << se;
-    cmSystemTools::Error(e.str().c_str());
+    cmSystemTools::Error(e.str());
     return false;
   }
   std::ostream& os = *foutPtr;

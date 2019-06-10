@@ -2,6 +2,7 @@
    file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmCTestHG.h"
 
+#include "cmAlgorithms.h"
 #include "cmCTest.h"
 #include "cmCTestVC.h"
 #include "cmProcessTools.h"
@@ -18,9 +19,7 @@ cmCTestHG::cmCTestHG(cmCTest* ct, std::ostream& log)
   this->PriorRev = this->Unknown;
 }
 
-cmCTestHG::~cmCTestHG()
-{
-}
+cmCTestHG::~cmCTestHG() = default;
 
 class cmCTestHG::IdentifyParser : public cmCTestVC::LineParser
 {
@@ -146,7 +145,7 @@ bool cmCTestHG::UpdateImpl()
   if (opts.empty()) {
     opts = this->CTest->GetCTestConfiguration("HGUpdateOptions");
   }
-  std::vector<std::string> args = cmSystemTools::ParseArguments(opts.c_str());
+  std::vector<std::string> args = cmSystemTools::ParseArguments(opts);
   for (std::string const& arg : args) {
     hg_update.push_back(arg.c_str());
   }
@@ -204,7 +203,7 @@ private:
 
   void CharacterDataHandler(const char* data, int length) override
   {
-    this->CData.insert(this->CData.end(), data, data + length);
+    cmAppend(this->CData, data, data + length);
   }
 
   void EndElement(const std::string& name) override

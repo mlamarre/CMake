@@ -2,6 +2,7 @@
    file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmJsonObjects.h" // IWYU pragma: keep
 
+#include "cmAlgorithms.h"
 #include "cmGeneratorExpression.h"
 #include "cmGeneratorTarget.h"
 #include "cmGlobalGenerator.h"
@@ -323,7 +324,7 @@ static Json::Value DumpSourceFilesList(
       fileData.SetDefines(defines);
     }
 
-    fileData.IsGenerated = file->GetPropertyAsBool("GENERATED");
+    fileData.IsGenerated = file->GetIsGenerated();
     std::vector<std::string>& groupFileList = fileGroups[fileData];
     groupFileList.push_back(file->GetFullPath());
   }
@@ -578,7 +579,7 @@ static Json::Value DumpTarget(cmGeneratorTarget* target,
     lg->GetTargetDefines(target, config, lang, defines);
     ld.SetDefines(defines);
     std::vector<std::string> includePathList;
-    lg->GetIncludeDirectories(includePathList, target, lang, config, true);
+    lg->GetIncludeDirectories(includePathList, target, lang, config);
     for (std::string const& i : includePathList) {
       ld.IncludePathList.emplace_back(
         i, target->IsSystemIncludeDirectory(i, config, lang));
@@ -601,8 +602,7 @@ static Json::Value DumpTargetsList(
 
   std::vector<cmGeneratorTarget*> targetList;
   for (auto const& lgIt : generators) {
-    const auto& list = lgIt->GetGeneratorTargets();
-    targetList.insert(targetList.end(), list.begin(), list.end());
+    cmAppend(targetList, lgIt->GetGeneratorTargets());
   }
   std::sort(targetList.begin(), targetList.end());
 

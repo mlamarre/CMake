@@ -62,9 +62,7 @@ cmCPackDragNDropGenerator::cmCPackDragNDropGenerator()
   this->componentPackageMethod = ONE_PACKAGE;
 }
 
-cmCPackDragNDropGenerator::~cmCPackDragNDropGenerator()
-{
-}
+cmCPackDragNDropGenerator::~cmCPackDragNDropGenerator() = default;
 
 int cmCPackDragNDropGenerator::InitializeInternal()
 {
@@ -212,8 +210,7 @@ int cmCPackDragNDropGenerator::PackageFiles()
 bool cmCPackDragNDropGenerator::CopyFile(std::ostringstream& source,
                                          std::ostringstream& target)
 {
-  if (!cmSystemTools::CopyFileIfDifferent(source.str().c_str(),
-                                          target.str().c_str())) {
+  if (!cmSystemTools::CopyFileIfDifferent(source.str(), target.str())) {
     cmCPackLogger(cmCPackLog::LOG_ERROR,
                   "Error copying " << source.str() << " to " << target.str()
                                    << std::endl);
@@ -247,8 +244,8 @@ bool cmCPackDragNDropGenerator::RunCommand(std::ostringstream& command,
   int exit_code = 1;
 
   bool result = cmSystemTools::RunSingleCommand(
-    command.str().c_str(), output, output, &exit_code, nullptr,
-    this->GeneratorVerbose, cmDuration::zero());
+    command.str(), output, output, &exit_code, nullptr, this->GeneratorVerbose,
+    cmDuration::zero());
 
   if (!result || exit_code) {
     cmCPackLogger(cmCPackLog::LOG_ERROR,

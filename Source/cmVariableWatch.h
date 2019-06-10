@@ -66,13 +66,15 @@ protected:
     WatchMethod Method = nullptr;
     void* ClientData = nullptr;
     DeleteData DeleteDataCall = nullptr;
-    Pair() {}
     ~Pair()
     {
       if (this->DeleteDataCall && this->ClientData) {
         this->DeleteDataCall(this->ClientData);
       }
     }
+    Pair() = default;
+    Pair(const Pair&) = delete;
+    Pair& operator=(const Pair&) = delete;
   };
 
   typedef std::vector<std::shared_ptr<Pair>> VectorOfPairs;
